@@ -290,14 +290,21 @@ def model_download(project, source, model_id, bucket, region, token, wait):
             import time
             last_logs = ""
             printed_waiting = False
+            spinner_chars = ["|", "/", "-", "\\"]
+            spinner_idx = 0
+            
             while True:
                 status = client.get_build_status(build_id)
                 state = status.get("status")
                 
-                if state == "QUEUED" and not printed_waiting:
-                    click.echo("Build job is queued. Waiting for it to start...")
-                    printed_waiting = True
-
+                if state == "QUEUED":
+                    if not printed_waiting:
+                        click.echo("Build job is queued. Waiting for it to start...")
+                        printed_waiting = True
+                    # Show a small spinner for queued state
+                    click.echo(f"\r {spinner_chars[spinner_idx % 4]} Queued...", nl=False)
+                    spinner_idx += 1
+                
                 # Fetch logs from GCS if available
                 log_url = status.get("logsBucket")
                 if log_url:
@@ -306,16 +313,29 @@ def model_download(project, source, model_id, bucket, region, token, wait):
                     try:
                         logs = client.get_build_logs(bucket_name, log_object)
                         if logs != last_logs:
+                            # Clear the spinner line if we were printing one
+                            if printed_waiting:
+                                click.echo("\r" + " " * 20 + "\r", nl=False)
+                            
                             new_content = logs[len(last_logs):]
                             click.echo(new_content, nl=False)
                             last_logs = logs
+                        elif state == "WORKING":
+                            # Show a small spinner for working state if no new logs
+                            click.echo(f"\r {spinner_chars[spinner_idx % 4]} Downloading...", nl=False)
+                            spinner_idx += 1
                     except Exception:
-                        pass # Logs might not be ready yet even if bucket is known
+                        # Silently wait for log object to be created
+                        if state == "WORKING":
+                            click.echo(f"\r {spinner_chars[spinner_idx % 4]} Initializing build...", nl=False)
+                            spinner_idx += 1
 
                 if state not in ["WORKING", "QUEUED"]:
+                    # Clear any lingering spinner line
+                    click.echo("\r" + " " * 30 + "\r", nl=False)
                     click.echo(f"\nBuild finished with status: {click.style(state, bold=True)}")
                     break
-                time.sleep(5)
+                time.sleep(1)
         else:
             click.echo(f"Track progress with: {click.style(f'cr-infer model status {build_id}', fg='cyan')}")
             

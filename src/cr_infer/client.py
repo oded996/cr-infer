@@ -108,7 +108,8 @@ class GCPClient:
         response = self.session.get(url)
         if response.status_code == 200:
             return response.text
-        return f"Could not fetch logs: {response.text}"
+        response.raise_for_status()
+        return ""
 
     def list_buckets(self) -> List[Dict[str, str]]:
         """List GCS buckets in the project with their locations."""

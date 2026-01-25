@@ -122,19 +122,18 @@ def quota(project, region, gpu):
                 def fmt(val):
                     return str(int(val)) if val == int(val) else str(val)
 
-                q_str = f"Non-Zonal: {fmt(quotas['non_zonal'])}, Zonal: {fmt(quotas['zonal'])}"
+                q_str = f"With Zonal Redundancy: {fmt(quotas['zonal'])}, Without Zonal Redundancy: {fmt(quotas['non_zonal'])}"
                 color = "green" if quotas['non_zonal'] > 0 or quotas['zonal'] > 0 else "yellow"
                 click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(q_str, fg=color)}")
             except Exception as e:
                 click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(f'Error: {e}', fg='red')}")
 
     click.echo(f"\n{click.style('How to request more quota:', bold=True)} http://g.co/cloudrun/gpu-quota")
-    click.echo("\n" + click.style("Note on Cloud Run GPU Quotas:", bold=True))
-    click.echo("To manage GPU capacity constraints, Cloud Run provides two redundancy options:")
-    click.echo(f"  {click.style('1. Non-Zonal (Regional):', fg='cyan')} Default. Used when 'GPU zonal redundancy' is turned ON.")
-    click.echo("     Cloud Run reserves capacity across multiple zones, providing high reliability during zonal failures.")
-    click.echo(f"  {click.style('2. Zonal:', fg='cyan')} Used when 'GPU zonal redundancy' is turned OFF.")
-    click.echo("     Lower cost, but failover is best-effort and relies on available capacity at that moment.")
+    click.echo("\n" + click.style("Note on Cloud Run GPU Redundancy Options:", bold=True))
+    click.echo(f"  {click.style('1. With Zonal Redundancy (default):', fg='cyan')} Cloud Run reserves GPU capacity across multiple zones.")
+    click.echo("     This offers higher reliability during zonal failures with an additional cost per GPU second.")
+    click.echo(f"  {click.style('2. Without Zonal Redundancy:', fg='cyan')} Cloud Run attempts failover on a best-effort basis.")
+    click.echo("     No guarantee of reserved capacity for failover, but results in a lower cost per GPU second.")
 
 @cli.group()
 def model():

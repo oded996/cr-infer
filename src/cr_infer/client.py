@@ -17,11 +17,29 @@ class GCPClient:
                 from google.auth.transport.requests import Request
                 self.credentials.refresh(Request())
             
-            identity = getattr(self.credentials, 'service_account_email', 'User Credentials')
-            if identity == 'User Credentials' and hasattr(self.credentials, 'signer_email'):
-                 identity = self.credentials.signer_email
+            # Try to get identity from userinfo API
+            response = self.session.get("https://www.googleapis.com/oauth2/v3/userinfo")
+            if response.status_code == 200:
+                identity = response.json().get("email")
+            else:
+                identity = getattr(self.credentials, 'service_account_email', None)
+                if not identity and hasattr(self.credentials, 'signer_email'):
+                    identity = self.credentials.signer_email
+                
+                if not identity:
+                    # Fallback to gcloud config
+                    import subprocess
+                    try:
+                        res = subprocess.run(["gcloud", "config", "get-value", "account"], capture_output=True, text=True)
+                        if res.returncode == 0:
+                            identity = res.stdout.strip()
+                    except Exception:
+                        pass
+                
+                if not identity:
+                    identity = "User Credentials"
 
-            return True, f"Authenticated as {identity}"
+            return True, identity
         except Exception as e:
             return False, str(e)
 

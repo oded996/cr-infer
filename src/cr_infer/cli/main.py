@@ -52,8 +52,10 @@ def check(project):
 
     # 1. Auth Check
     is_auth, auth_msg = client.verify_auth()
-    print_status("Authentication", is_auth, auth_msg)
-    if not is_auth:
+    if is_auth:
+        click.echo(f"[{click.style('✔', fg='green')}] Authenticated as: {click.style(auth_msg, bold=True, fg='yellow')}")
+    else:
+        click.secho(f"[✘] Authentication: {auth_msg}", fg="red")
         sys.exit(1)
 
     # 2. Permissions Check
@@ -82,7 +84,11 @@ def check(project):
     
     for api in required_apis:
         enabled = client.check_api_enabled(api)
-        print_status(api, enabled, "Enabled" if enabled else "Disabled")
+        if enabled:
+            print_status(api, True, "Enabled")
+        else:
+            enable_url = f"https://console.cloud.google.com/apis/library/{api}?project={client.project_id}"
+            print_status(api, False, f"Disabled - Enable at: {click.style(enable_url, fg='cyan')}")
 
 @cli.command()
 @click.option("--project", "-p", help="GCP Project ID")

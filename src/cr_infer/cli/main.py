@@ -229,19 +229,20 @@ def model_download(project, source, model_id, bucket, token, wait):
         size_bytes = info.get("total_size", 0)
         est_vram = size_bytes * 1.2 / (1024**3)
         
-        width = 50
+        width = 50 # Inner width of the box
         click.echo("\n" + "╔" + "═" * width + "╗")
-        title = "Model Info Summary"
-        click.echo(f"║ {click.style(title, bold=True).ljust(width + 8)} ║")
+        
+        # Title: Style the padded string
+        title_text = "Model Info Summary".ljust(width)
+        click.echo(f"║ {click.style(title_text, bold=True)} ║")
+        
         click.echo("╠" + "═" * width + "╣")
         
         def print_line(label, value):
-            # label is plain, we style it here
-            styled_label = click.style(label, fg='cyan')
-            # Width is 50. '║ ' (2) + label (11) + ' ' (1) + value + padding + ' ║' (2)
-            label_width = 11
-            value_width = width - label_width - 1
-            click.echo(f"║ {styled_label.ljust(label_width + 8)} {value.ljust(value_width)} ║")
+            # label (12) + space (1) + value (37) = 50
+            l_str = label.ljust(12)
+            v_str = value.ljust(width - 13)
+            click.echo(f"║ {click.style(l_str, fg='cyan')} {v_str} ║")
 
         print_line("Model:", model_id)
         print_line("Total Size:", format_bytes(size_bytes))
@@ -249,7 +250,8 @@ def model_download(project, source, model_id, bucket, token, wait):
         print_line("Region:", bucket_region)
         
         click.echo("║" + " " * width + "║")
-        click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(width + 8)} ║")
+        comp_title = "Compatible GPUs:".ljust(width)
+        click.echo(f"║ {click.style(comp_title, bold=True)} ║")
         
         from cr_infer.config import get_region_config
         region_cfg = get_region_config(bucket_region)
@@ -257,10 +259,12 @@ def model_download(project, source, model_id, bucket, token, wait):
             for g in region_cfg.gpus:
                 status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
                 color = "green" if status == "[v]" else "red"
-                text = f"  {status} {g.name} ({g.vram_gb} GB)"
-                click.echo(f"║ {click.style(text, fg=color).ljust(width + 8)} ║")
+                gpu_text = f"  {status} {g.name} ({g.vram_gb} GB)".ljust(width)
+                click.echo(f"║ {click.style(gpu_text, fg=color)} ║")
         else:
-             click.echo(f"║ {click.style('  No GPU info for this region', fg='yellow').ljust(width + 8)} ║")
+             err_text = "  No GPU info for this region".ljust(width)
+             click.echo(f"║ {click.style(err_text, fg='yellow')} ║")
+        
         click.echo("╚" + "═" * width + "╝\n")
 
         if not click.confirm("Start download?", default=True):

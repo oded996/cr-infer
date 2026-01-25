@@ -1,0 +1,169 @@
+import google.auth
+from google.auth.transport.requests import AuthorizedSession
+from typing import List, Tuple, Dict, Any
+
+class GCPClient:
+    def __init__(self, project_id: str = None):
+        self.credentials, self.default_project_id = google.auth.default()
+        self.project_id = project_id or self.default_project_id
+        self.session = AuthorizedSession(self.credentials)
+
+    def verify_auth(self) -> Tuple[bool, str]:
+        try:
+            if not self.credentials:
+                return False, "Not authenticated. Run 'gcloud auth application-default login'."
+            # Refresh if needed
+            if not self.credentials.valid:
+                from google.auth.transport.requests import Request
+                self.credentials.refresh(Request())
+            
+            identity = getattr(self.credentials, 'service_account_email', 'User Credentials')
+            if identity == 'User Credentials' and hasattr(self.credentials, 'signer_email'):
+                 identity = self.credentials.signer_email
+
+            return True, f"Authenticated as {identity}"
+        except Exception as e:
+            return False, str(e)
+
+    def check_permissions(self, permissions: List[str]) -> List[Tuple[str, bool]]:
+        url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{self.project_id}:testIamPermissions"
+        body = {"permissions": permissions}
+        response = self.session.post(url, json=body)
+        if response.status_code == 200:
+            granted = response.json().get("permissions", [])
+            return [(p, p in granted) for p in permissions]
+        else:
+            return [(p, False) for p in permissions]
+
+    def check_api_enabled(self, service_name: str) -> bool:
+        url = f"https://serviceusage.googleapis.com/v1/projects/{self.project_id}/services/{service_name}"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            return response.json().get("state") == "ENABLED"
+        return False
+
+    def get_quota_info(self, region: str, quota_id: str) -> Dict[str, Any]:
+        """Fetch quota info from Cloud Quotas API."""
+        # Cloud Quotas API uses global location for quotaInfos usually
+        url = f"https://cloudquotas.googleapis.com/v1/projects/{self.project_id}/locations/global/services/run.googleapis.com/quotaInfos/{quota_id}"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            return response.json()
+        elif response.status_code == 403:
+            raise Exception("Permission Denied or API not enabled for Cloud Quotas.")
+        elif response.status_code == 404:
+            return {}
+        else:
+            response.raise_for_status()
+            return {}
+
+    def trigger_build(self, build_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Submit a build to Cloud Build."""
+        url = f"https://cloudbuild.googleapis.com/v1/projects/{self.project_id}/builds"
+        response = self.session.post(url, json=build_config)
+        if not response.ok:
+            raise Exception(f"Cloud Build API Error {response.status_code}: {response.text}")
+        return response.json()
+
+    def patch(self, url: str, json: Dict[str, Any]) -> Dict[str, Any]:
+        """Send a PATCH request."""
+        response = self.session.patch(url, json=json)
+        response.raise_for_status()
+        return response.json()
+
+    def delete(self, url: str) -> Dict[str, Any]:
+        """Send a DELETE request."""
+        response = self.session.delete(url)
+        response.raise_for_status()
+        return response.json()
+
+    def get_build_status(self, build_id: str) -> Dict[str, Any]:
+        """Fetch build details from Cloud Build."""
+        url = f"https://cloudbuild.googleapis.com/v1/projects/{self.project_id}/locations/global/builds/{build_id}"
+        response = self.session.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    def get_build_logs(self, bucket: str, log_object: str) -> str:
+        """Fetch logs from GCS (Cloud Build logs)."""
+        url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{log_object}?alt=media"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            return response.text
+        return f"Could not fetch logs: {response.text}"
+
+    def list_buckets(self) -> List[Dict[str, str]]:
+        """List GCS buckets in the project with their locations."""
+        url = f"https://storage.googleapis.com/storage/v1/b?project={self.project_id}"
+        response = self.session.get(url)
+        response.raise_for_status()
+        items = response.json().get("items", [])
+        return [{"name": b["name"], "location": b.get("location", "").lower()} for b in items]
+
+    def create_bucket(self, name: str, location: str) -> Dict[str, Any]:
+        """Create a new GCS bucket."""
+        url = f"https://storage.googleapis.com/storage/v1/b?project={self.project_id}"
+        body = {
+            "name": name,
+            "location": location,
+            "storageClass": "STANDARD"
+        }
+        response = self.session.post(url, json=body)
+        response.raise_for_status()
+        return response.json()
+
+    def list_subnets(self, region: str) -> List[Dict[str, Any]]:
+        """List subnets in a region."""
+        url = f"https://compute.googleapis.com/compute/v1/projects/{self.project_id}/regions/{region}/subnetworks"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            return response.json().get("items", [])
+        return []
+
+    def patch_subnet(self, region: str, subnet_name: str, json: Dict[str, Any]) -> Dict[str, Any]:
+        """Patch a subnetwork (e.g., to enable PGA)."""
+        url = f"https://compute.googleapis.com/compute/v1/projects/{self.project_id}/regions/{region}/subnetworks/{subnet_name}"
+        response = self.session.patch(url, json=json)
+        response.raise_for_status()
+        return response.json()
+
+    def get_logs(self, filter_str: str, page_size: int = 50) -> List[Dict[str, Any]]:
+        """Fetch logs from Cloud Logging."""
+        url = "https://logging.googleapis.com/v2/entries:list"
+        body = {
+            "resourceNames": [f"projects/{self.project_id}"],
+            "filter": filter_str,
+            "orderBy": "timestamp desc",
+            "pageSize": page_size
+        }
+        response = self.session.post(url, json=body)
+        response.raise_for_status()
+        return response.json().get("entries", [])
+
+    def get_id_token(self, audience: str) -> str:
+        """Generate an ID token for the given audience."""
+        from google.auth.transport.requests import Request
+        import subprocess
+
+        try:
+            # 1. Try built-in credentials (works for Service Accounts)
+            if not self.credentials.valid:
+                self.credentials.refresh(Request())
+            
+            if hasattr(self.credentials, 'id_token') and self.credentials.id_token:
+                return self.credentials.id_token
+            
+            # 2. Fallback for User Credentials: Use gcloud to get an ID token
+            # User credentials from 'gcloud auth application-default login' often don't provide an ID token directly.
+            result = subprocess.run(
+                ["gcloud", "auth", "print-identity-token", f"--audiences={audience}"],
+                capture_output=True, text=True, check=True
+            )
+            return result.stdout.strip()
+        except Exception as e:
+            raise Exception(f"Failed to obtain ID token: {e}")
+
+    def request(self, method: str, url: str, **kwargs) -> Dict[str, Any]:
+        response = self.session.request(method, url, **kwargs)
+        response.raise_for_status()
+        return response.json()

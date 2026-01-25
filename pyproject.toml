@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cr-infer"
+version = "0.1.0"
+description = "CLI tool to deploy AI workloads on Cloud Run with GPUs"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "typer[all]>=0.12.0",
+    "google-cloud-run>=0.10.0",
+    "google-cloud-storage>=2.14.0",
+    "google-cloud-build>=3.23.0",
+    "google-cloud-logging>=3.8.0",
+    "google-cloud-quotas>=0.1.0",
+    "google-cloud-resource-manager>=1.12.0",
+    "google-auth>=2.27.0",
+    "questionary>=2.0.1",
+    "pydantic>=2.6.0",
+    "rich>=13.7.0",
+    "google-api-python-client>=2.116.0"
+]
+
+[project.scripts]
+cr-infer = "cr_infer.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cr_infer"]

@@ -65,7 +65,6 @@ def check(project):
         "run.services.create",
         "storage.buckets.list",
         "cloudbuild.builds.create",
-        "cloudquotas.quotas.get",
     ]
     
     results = client.check_permissions(required_permissions)
@@ -78,7 +77,6 @@ def check(project):
         "run.googleapis.com",
         "storage.googleapis.com",
         "cloudbuild.googleapis.com",
-        "cloudquotas.googleapis.com",
         "logging.googleapis.com"
     ]
     

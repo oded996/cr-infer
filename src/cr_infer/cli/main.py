@@ -24,6 +24,14 @@ def print_status(label: str, success: bool, message: str = ""):
     msg = f" {message}" if message else ""
     click.secho(f"[{status}] {label}{msg}", fg=color)
 
+def format_bytes(size):
+    if not size: return "Unknown"
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if size < 1024.0:
+            return f"{size:.2f} {unit}"
+        size /= 1024.0
+    return f"{size:.2f} PB"
+
 @click.group()
 def cli():
     """CLI tool to deploy AI workloads on Cloud Run with GPUs"""
@@ -154,7 +162,8 @@ def model():
 @click.option("--model-id", "-m", help="Model ID")
 @click.option("--bucket", "-b", help="Target GCS Bucket")
 @click.option("--token", "-t", help="HF Token (optional)")
-def model_download(project, source, model_id, bucket, token):
+@click.option("--wait/--no-wait", default=False, help="Wait for download to complete and stream logs")
+def model_download(project, source, model_id, bucket, token, wait):
     """Download a model to GCS using Cloud Build."""
     from cr_infer.models import start_download, hf_preflight, ollama_preflight
     
@@ -172,37 +181,106 @@ def model_download(project, source, model_id, bucket, token):
         if click.confirm("Is this a gated model (requires token)?", default=False):
             token = prompt_if_missing(token, "HF Token")
 
-    if not bucket:
-        from cr_infer.config import list_supported_regions
-        gpu_regions = list_supported_regions()
-        
-        all_buckets = client.list_buckets()
-        # Filter buckets that are in regions supported by cr-infer (have GPUs)
-        valid_buckets = [b for b in all_buckets if b["location"] in gpu_regions]
-        
-        choices = [f"{b['name']} ({b['location']})" for b in valid_buckets] + ["+ Create New Bucket"]
-        bucket_choice = prompt_if_missing(None, "Bucket", choices=choices, message="Select target bucket (GPU regions only):")
-        
-        if bucket_choice == "+ Create New Bucket":
-            new_name = click.prompt("Enter new bucket name")
-            new_location = prompt_if_missing(None, "Location", choices=gpu_regions, message="Select bucket location:")
-            click.echo(f"Creating bucket {new_name} in {new_location}...")
-            client.create_bucket(new_name, new_location)
-            bucket = new_name
-        else:
-            bucket = bucket_choice.split(" (")[0]
-
     try:
         click.echo(f"Performing preflight check for {model_id}...")
         if source == "huggingface":
-            hf_preflight(model_id, token)
+            info = hf_preflight(model_id, token)
         else:
-            ollama_preflight(model_id)
+            info = ollama_preflight(model_id)
         
-        click.echo(f"Starting Cloud Build download job...")
+        # Determine bucket and its region
+        if not bucket:
+            from cr_infer.config import list_supported_regions
+            gpu_regions = list_supported_regions()
+            all_buckets = client.list_buckets()
+            valid_buckets = [b for b in all_buckets if b["location"] in gpu_regions]
+            choices = [f"{b['name']} ({b['location']})" for b in valid_buckets] + ["+ Create New Bucket"]
+            bucket_choice = prompt_if_missing(None, "Bucket", choices=choices, message="Select target bucket (GPU regions only):")
+            
+            if bucket_choice == "+ Create New Bucket":
+                new_name = click.prompt("Enter new bucket name")
+                new_location = prompt_if_missing(None, "Location", choices=gpu_regions, message="Select bucket location:")
+                click.echo(f"Creating bucket {new_name} in {new_location}...")
+                client.create_bucket(new_name, new_location)
+                bucket = new_name
+                bucket_region = new_location
+            else:
+                bucket = bucket_choice.split(" (")[0]
+                bucket_region = bucket_choice.split(" (")[1].replace(")", "")
+        else:
+            all_buckets = client.list_buckets()
+            bucket_info = next((b for b in all_buckets if b["name"] == bucket), None)
+            if not bucket_info:
+                click.secho(f"Error: Bucket {bucket} not found.", fg="red")
+                return
+            bucket_region = bucket_info["location"]
+
+        # --- Model Info Box ---
+        size_bytes = info.get("total_size", 0)
+        est_vram = size_bytes * 1.2 / (1024**3)
+        
+        click.echo("\n" + "╔" + "═" * 50 + "╗")
+        click.echo(f"║ {click.style('Model Info Summary', bold=True).ljust(58)} ║")
+        click.echo("╠" + "═" * 50 + "╣")
+        click.echo(f"║ {click.style('Model:', fg='cyan').ljust(15)} {model_id.ljust(34)} ║")
+        click.echo(f"║ {click.style('Total Size:', fg='cyan').ljust(15)} {format_bytes(size_bytes).ljust(34)} ║")
+        click.echo(f"║ {click.style('Est. vRAM:', fg='cyan').ljust(15)} ~{f'{est_vram:.2f} GB'.ljust(33)} ║")
+        click.echo(f"║ {click.style('Region:', fg='cyan').ljust(15)} {bucket_region.ljust(34)} ║")
+        click.echo("║" + " " * 50 + "║")
+        click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(58)} ║")
+        
+        from cr_infer.config import get_region_config
+        region_cfg = get_region_config(bucket_region)
+        if region_cfg:
+            for g in region_cfg.gpus:
+                status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
+                color = "green" if status == "[v]" else "red"
+                line = f"  {status} {g.name} ({g.vram_gb} GB)"
+                click.echo(f"║ {click.style(line, fg=color).ljust(58)} ║")
+        click.echo("╚" + "═" * 50 + "╝\n")
+
+        if not click.confirm("Start download?", default=True):
+            return
+
+        click.echo(f"Submitting Cloud Build download job...")
         build_id = start_download(client, source, model_id, bucket, token)
-        click.secho(f"✔ Build started: {build_id}", fg="green")
-        click.echo(f"Track progress with: cr-infer model status {build_id}")
+        
+        console_url = f"https://console.cloud.google.com/cloud-build/builds/{build_id}?project={client.project_id}"
+        click.secho(f"✔ Build started: {build_id}", fg="green", bold=True)
+        click.echo(f"{click.style('Console Link:', bold=True)} {console_url}\n")
+        
+        if wait:
+            click.echo("Waiting for build and streaming logs (Ctrl+C to stop waiting)...")
+            # Reuse logic from model logs
+            import time
+            last_logs = ""
+            while True:
+                status = client.get_build_status(build_id)
+                state = status.get("status")
+                
+                # Fetch logs from GCS if available
+                log_url = status.get("logsBucket")
+                if log_url:
+                    bucket_name = log_url.replace("gs://", "").split("/")[0]
+                    log_object = f"log-{build_id}.txt"
+                    try:
+                        logs = client.get_build_logs(bucket_name, log_object)
+                        if logs != last_logs:
+                            new_content = logs[len(last_logs):]
+                            click.echo(new_content, nl=False)
+                            last_logs = logs
+                    except Exception:
+                        pass # Logs might not be ready yet
+
+                if state not in ["WORKING", "QUEUED"]:
+                    click.echo(f"\nBuild finished with status: {click.style(state, bold=True)}")
+                    break
+                time.sleep(5)
+        else:
+            click.echo(f"Track progress with: {click.style(f'cr-infer model status {build_id}', fg='cyan')}")
+            
+    except Exception as e:
+        click.secho(f"Error: {e}", fg="red")
     except Exception as e:
         click.secho(f"Error: {e}", fg="red")
 

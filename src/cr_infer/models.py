@@ -18,18 +18,17 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     
     data = response.json()
     total_size = 0
+    # Try to sum up sizes if available in siblings (rare for this API but possible)
     for sibling in data.get("siblings", []):
-        # This is an estimate, usually sibings don't have size in this API
-        # but we can try to fetch more details if needed.
-        pass
+        total_size += sibling.get("size", 0)
     
-    # Alternative: use the 'info' from the hub if available.
-    # For now, let's just return success if model exists.
+    # Fallback: some models have a 'safetensors' or 'metadata' field with size
+    # But usually we'd need another API call. Let's return what we found.
     return {
         "model_id": model_id,
         "source": "huggingface",
         "exists": True,
-        "total_size": 0 # TODO: Get actual size
+        "total_size": total_size
     }
 
 def ollama_preflight(model_id: str) -> Dict[str, Any]:

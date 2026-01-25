@@ -87,6 +87,7 @@ alias cr-infer='PYTHONPATH=$(pwd)/src python3 src/cr_infer/cli/main.py'
   - `--model-id, -m`: The model name/identifier.
   - `--bucket, -b`: Target GCS bucket.
   - `--token, -t`: Hugging Face API token (for gated models).
+  - `--wait/--no-wait`: Whether to wait for completion and stream logs (default is `--wait`).
 - **`model status [BUILD_ID]`**: Check the status of a download job.
 - **`model logs [BUILD_ID]`**: View the Cloud Build logs for a download.
 - **`model deploy`**: Deploy a model to Cloud Run.

@@ -163,7 +163,7 @@ def model():
 @click.option("--bucket", "-b", help="Target GCS Bucket")
 @click.option("--region", "-r", help="Target region for GPU check")
 @click.option("--token", "-t", help="HF Token (optional)")
-@click.option("--wait/--no-wait", default=False, help="Wait for download to complete and stream logs")
+@click.option("--wait/--no-wait", default=True, help="Wait for download to complete and stream logs (default)")
 def model_download(project, source, model_id, bucket, region, token, wait):
     """Download a model to GCS using Cloud Build."""
     from cr_infer.models import start_download, hf_preflight, ollama_preflight

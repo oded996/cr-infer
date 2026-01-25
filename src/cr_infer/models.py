@@ -92,8 +92,9 @@ def start_download(client: GCPClient, source: str, model_id: str, bucket_name: s
     substitutions = {
         "_MODEL_ID": model_id,
         "_BUCKET_NAME": bucket_name,
-        "_HF_TOKEN": hf_token or ""
     }
+    if hf_token:
+        substitutions["_HF_TOKEN"] = hf_token
 
     # Step to update metadata to 'completed'
     update_metadata_script = """

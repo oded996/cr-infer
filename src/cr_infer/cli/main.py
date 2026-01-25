@@ -175,7 +175,9 @@ def model_download(project, source, model_id, bucket, token, wait):
     client = GCPClient(project_id=project)
 
     source = prompt_if_missing(source, "Source", choices=["huggingface", "ollama"])
-    model_id = prompt_if_missing(model_id, "Model ID", message="Enter Model ID (e.g. gemma2:2b or google/gemma-3-4b-it):")
+    
+    example = "google/gemma-3-4b-it" if source == "huggingface" else "gemma3:4b"
+    model_id = prompt_if_missing(model_id, "Model ID", message=f"Enter Model ID (e.g. {example}):")
 
     if source == "huggingface" and not token:
         if click.confirm("Is this a gated model (requires token)?", default=False):
@@ -222,10 +224,10 @@ def model_download(project, source, model_id, bucket, token, wait):
         click.echo("\n" + "╔" + "═" * 50 + "╗")
         click.echo(f"║ {click.style('Model Info Summary', bold=True).ljust(58)} ║")
         click.echo("╠" + "═" * 50 + "╣")
-        click.echo(f"║ {click.style('Model:', fg='cyan').ljust(15)} {model_id.ljust(34)} ║")
-        click.echo(f"║ {click.style('Total Size:', fg='cyan').ljust(15)} {format_bytes(size_bytes).ljust(34)} ║")
-        click.echo(f"║ {click.style('Est. vRAM:', fg='cyan').ljust(15)} ~{f'{est_vram:.2f} GB'.ljust(33)} ║")
-        click.echo(f"║ {click.style('Region:', fg='cyan').ljust(15)} {bucket_region.ljust(34)} ║")
+        click.echo(f"║ {click.style('Model:', fg='cyan').ljust(20)} {model_id.ljust(34)} ║")
+        click.echo(f"║ {click.style('Total Size:', fg='cyan').ljust(20)} {format_bytes(size_bytes).ljust(34)} ║")
+        click.echo(f"║ {click.style('Est. vRAM:', fg='cyan').ljust(20)} ~{f'{est_vram:.2f} GB'.ljust(33)} ║")
+        click.echo(f"║ {click.style('Region:', fg='cyan').ljust(20)} {bucket_region.ljust(34)} ║")
         click.echo("║" + " " * 50 + "║")
         click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(58)} ║")
         
@@ -236,6 +238,8 @@ def model_download(project, source, model_id, bucket, token, wait):
                 status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
                 color = "green" if status == "[v]" else "red"
                 line = f"  {status} {g.name} ({g.vram_gb} GB)"
+                # We need to account for ANSI escape codes when calculating ljust
+                # but simple ljust on the raw string is easier
                 click.echo(f"║ {click.style(line, fg=color).ljust(58)} ║")
         click.echo("╚" + "═" * 50 + "╝\n")
 

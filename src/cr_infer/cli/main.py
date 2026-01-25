@@ -161,9 +161,10 @@ def model():
 @click.option("--source", "-s", type=click.Choice(["huggingface", "ollama"]), help="Model source")
 @click.option("--model-id", "-m", help="Model ID")
 @click.option("--bucket", "-b", help="Target GCS Bucket")
+@click.option("--region", "-r", help="Target region for GPU check")
 @click.option("--token", "-t", help="HF Token (optional)")
 @click.option("--wait/--no-wait", default=False, help="Wait for download to complete and stream logs")
-def model_download(project, source, model_id, bucket, token, wait):
+def model_download(project, source, model_id, bucket, region, token, wait):
     """Download a model to GCS using Cloud Build."""
     from cr_infer.models import start_download, hf_preflight, ollama_preflight
     
@@ -191,6 +192,7 @@ def model_download(project, source, model_id, bucket, token, wait):
             info = ollama_preflight(model_id)
         
         # Determine bucket and its region
+        bucket_region = region
         if not bucket:
             from cr_infer.config import list_supported_regions
             gpu_regions = list_supported_regions()
@@ -210,12 +212,13 @@ def model_download(project, source, model_id, bucket, token, wait):
                 bucket = bucket_choice.split(" (")[0]
                 bucket_region = bucket_choice.split(" (")[1].replace(")", "")
         else:
-            all_buckets = client.list_buckets()
-            bucket_info = next((b for b in all_buckets if b["name"] == bucket), None)
-            if not bucket_info:
-                click.secho(f"Error: Bucket {bucket} not found.", fg="red")
-                return
-            bucket_region = bucket_info["location"]
+            if not bucket_region:
+                all_buckets = client.list_buckets()
+                bucket_info = next((b for b in all_buckets if b["name"] == bucket), None)
+                if not bucket_info:
+                    click.secho(f"Error: Bucket {bucket} not found.", fg="red")
+                    return
+                bucket_region = bucket_info["location"]
             
         # If bucket is multi-regional (us, eu, asia), we need to ask for a target region to show compatible GPUs
         from cr_infer.config import list_supported_regions
@@ -229,24 +232,27 @@ def model_download(project, source, model_id, bucket, token, wait):
         size_bytes = info.get("total_size", 0)
         est_vram = size_bytes * 1.2 / (1024**3)
         
-        width = 52 # Total width including borders
-        inner_width = width - 4 # Space for '║  ' and '  ║'
+        W = 54 # Fixed outer width
         
-        click.echo("\n" + "╔" + "═" * (width - 2) + "╗")
+        click.echo("\n" + "╔" + "═" * (W - 2) + "╗")
         
         def print_box_line(content, bold=False, cyan_label=None, color=None):
+            # ║ (1) + space (2) + inner (W-6) + space (2) + ║ (1) = W
+            inner_w = W - 6
             if cyan_label:
-                l_str = cyan_label.ljust(12)
-                v_str = content.ljust(inner_width - 13)
-                click.echo(f"║  {click.style(l_str, fg='cyan')} {v_str}  ║")
+                # label (12) + content (inner_w - 12)
+                l_part = cyan_label.ljust(12)
+                v_part = content.ljust(inner_w - 12)
+                line = f"║  {click.style(l_part, fg='cyan')}{v_part}  ║"
             else:
-                text = content.ljust(inner_width)
+                text = content.ljust(inner_w)
                 if bold: text = click.style(text, bold=True)
                 if color: text = click.style(text, fg=color)
-                click.echo(f"║  {text}  ║")
+                line = f"║  {text}  ║"
+            click.echo(line)
 
         print_box_line("Model Info Summary", bold=True)
-        click.echo("╠" + "═" * (width - 2) + "╣")
+        click.echo("╠" + "═" * (W - 2) + "╣")
         
         print_box_line(model_id, cyan_label="Model:")
         print_box_line(format_bytes(size_bytes), cyan_label="Total Size:")
@@ -267,7 +273,7 @@ def model_download(project, source, model_id, bucket, token, wait):
         else:
              print_box_line("No GPU info for this region", color="yellow")
         
-        click.echo("╚" + "═" * (width - 2) + "╝\n")
+        click.echo("╚" + "═" * (W - 2) + "╝\n")
 
         if not click.confirm("Start download?", default=True):
             return

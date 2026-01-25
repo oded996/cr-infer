@@ -1,7 +1,7 @@
 import json
 import sys
 import click
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 from cr_infer.client import GCPClient
 
 def prompt_if_missing(value: Optional[str], name: str, choices: Optional[List[str]] = None, message: str = None) -> str:

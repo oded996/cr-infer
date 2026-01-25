@@ -61,7 +61,8 @@ def check(project):
     required_permissions = [
         "run.services.get",
         "run.services.create",
-        "storage.buckets.get",
+        "storage.buckets.list",
+        "storage.objects.get",
         "cloudbuild.builds.create",
         "cloudquotas.quotas.get",
     ]

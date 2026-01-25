@@ -114,19 +114,25 @@ def quota(project, region, gpu):
             click.echo("  No supported GPUs configured for this region.")
             continue
 
+        # Table Header
+        header = f"  {'GPU Type'.ljust(20)} {'Without Zonal Redundancy'.ljust(25)} {'With Zonal Redundancy'}"
+        click.echo(click.style(header, underline=True, fg="white"))
+
         for g in gpus_to_check:
             try:
                 quotas = fetch_gpu_quota(client, r, g)
                 
-                # Format numbers to remove .0 if it's an integer
                 def fmt(val):
                     return str(int(val)) if val == int(val) else str(val)
 
-                q_str = f"With Zonal Redundancy: {fmt(quotas['zonal'])}, Without Zonal Redundancy: {fmt(quotas['non_zonal'])}"
+                non_zonal = fmt(quotas['non_zonal'])
+                zonal = fmt(quotas['zonal'])
+                
                 color = "green" if quotas['non_zonal'] > 0 or quotas['zonal'] > 0 else "yellow"
-                click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(q_str, fg=color)}")
+                row = f"  {g.ljust(20)} {non_zonal.ljust(25)} {zonal}"
+                click.echo(click.style(row, fg=color))
             except Exception as e:
-                click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(f'Error: {e}', fg='red')}")
+                click.echo(f"  {g.ljust(20)} {click.style(f'Error: {e}', fg='red')}")
 
     click.echo(f"\n{click.style('How to request more quota:', bold=True)} http://g.co/cloudrun/gpu-quota")
     click.echo("\n" + click.style("Note on Cloud Run GPU Redundancy Options:", bold=True))

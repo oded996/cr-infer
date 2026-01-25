@@ -216,20 +216,40 @@ def model_download(project, source, model_id, bucket, token, wait):
                 click.secho(f"Error: Bucket {bucket} not found.", fg="red")
                 return
             bucket_region = bucket_info["location"]
+            
+        # If bucket is multi-regional (us, eu, asia), we need to ask for a target region to show compatible GPUs
+        from cr_infer.config import list_supported_regions
+        gpu_regions = list_supported_regions()
+        
+        if bucket_region not in gpu_regions:
+            click.secho(f"\n[!] Bucket is in multi-region '{bucket_region}'.", fg="yellow")
+            bucket_region = prompt_if_missing(None, "Region", choices=gpu_regions, message="Select a target region to check GPU compatibility:")
 
         # --- Model Info Box ---
         size_bytes = info.get("total_size", 0)
         est_vram = size_bytes * 1.2 / (1024**3)
         
-        click.echo("\n" + "╔" + "═" * 50 + "╗")
-        click.echo(f"║ {click.style('Model Info Summary', bold=True).ljust(58)} ║")
-        click.echo("╠" + "═" * 50 + "╣")
-        click.echo(f"║ {click.style('Model:', fg='cyan').ljust(20)} {model_id.ljust(34)} ║")
-        click.echo(f"║ {click.style('Total Size:', fg='cyan').ljust(20)} {format_bytes(size_bytes).ljust(34)} ║")
-        click.echo(f"║ {click.style('Est. vRAM:', fg='cyan').ljust(20)} ~{f'{est_vram:.2f} GB'.ljust(33)} ║")
-        click.echo(f"║ {click.style('Region:', fg='cyan').ljust(20)} {bucket_region.ljust(34)} ║")
-        click.echo("║" + " " * 50 + "║")
-        click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(58)} ║")
+        width = 50
+        click.echo("\n" + "╔" + "═" * width + "╗")
+        title = "Model Info Summary"
+        click.echo(f"║ {click.style(title, bold=True).ljust(width + 8)} ║")
+        click.echo("╠" + "═" * width + "╣")
+        
+        def print_line(label, value):
+            # label is styled, value is plain
+            line = f"║ {click.style(label, fg='cyan')} {value}"
+            # Calculate visible length (ignoring ANSI)
+            visible_len = len(label) + 1 + len(value) + 2 # 2 for the start "║ "
+            padding = width + 2 - visible_len
+            click.echo(line + " " * padding + "║")
+
+        print_line("Model:     ", model_id)
+        print_line("Total Size:", format_bytes(size_bytes))
+        print_line("Est. vRAM: ", f"~{est_vram:.2f} GB")
+        print_line("Region:    ", bucket_region)
+        
+        click.echo("║" + " " * width + "║")
+        click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(width + 8)} ║")
         
         from cr_infer.config import get_region_config
         region_cfg = get_region_config(bucket_region)
@@ -237,11 +257,14 @@ def model_download(project, source, model_id, bucket, token, wait):
             for g in region_cfg.gpus:
                 status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
                 color = "green" if status == "[v]" else "red"
-                line = f"  {status} {g.name} ({g.vram_gb} GB)"
-                # We need to account for ANSI escape codes when calculating ljust
-                # but simple ljust on the raw string is easier
-                click.echo(f"║ {click.style(line, fg=color).ljust(58)} ║")
-        click.echo("╚" + "═" * 50 + "╝\n")
+                text = f"  {status} {g.name} ({g.vram_gb} GB)"
+                # Visible length of text
+                v_len = len(text) + 2
+                pad = width + 2 - v_len
+                click.echo(f"║ {click.style(text, fg=color)}" + " " * pad + "║")
+        else:
+             click.echo(f"║ {click.style('  No GPU info for this region', fg='yellow').ljust(width + 8)} ║")
+        click.echo("╚" + "═" * width + "╝\n")
 
         if not click.confirm("Start download?", default=True):
             return

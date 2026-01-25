@@ -130,9 +130,11 @@ def quota(project, region, gpu):
 
     click.echo(f"\n{click.style('How to request more quota:', bold=True)} http://g.co/cloudrun/gpu-quota")
     click.echo("\n" + click.style("Note on Cloud Run GPU Quotas:", bold=True))
-    click.echo("Cloud Run uses specific quotas to manage GPU allocation. There are two types:")
-    click.echo(f"  {click.style('1. Non-Zonal (Regional):', fg='cyan')} Recommended. Allows Cloud Run to place your service in any zone within the region.")
-    click.echo(f"  {click.style('2. Zonal:', fg='cyan')} Required if you disable 'GPU zonal redundancy'. This locks your service to a specific zone for lower costs.")
+    click.echo("To manage GPU capacity constraints, Cloud Run provides two redundancy options:")
+    click.echo(f"  {click.style('1. Non-Zonal (Regional):', fg='cyan')} Default. Used when 'GPU zonal redundancy' is turned ON.")
+    click.echo("     Cloud Run reserves capacity across multiple zones, providing high reliability during zonal failures.")
+    click.echo(f"  {click.style('2. Zonal:', fg='cyan')} Used when 'GPU zonal redundancy' is turned OFF.")
+    click.echo("     Lower cost, but failover is best-effort and relies on available capacity at that moment.")
 
 @cli.group()
 def model():

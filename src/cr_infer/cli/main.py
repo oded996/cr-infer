@@ -140,6 +140,8 @@ def quota(project, region, gpu):
     click.echo("     This offers higher reliability during zonal failures with an additional cost per GPU second.")
     click.echo(f"  {click.style('2. Without Zonal Redundancy:', fg='cyan')} Cloud Run attempts failover on a best-effort basis.")
     click.echo("     No guarantee of reserved capacity for failover, but results in a lower cost per GPU second.")
+    click.echo("\n" + click.style("Tip:", fg="green") + " If you have 0 quota, Cloud Run will attempt to automatically acquire a small")
+    click.echo("'Without Zonal Redundancy' quota for you during your first deployment.")
 
 @cli.group()
 def model():

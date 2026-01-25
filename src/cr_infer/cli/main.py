@@ -575,6 +575,76 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
         }
         image = images[framework]
 
+        # --- Deployment Summary Table ---
+        W = 60
+        click.echo("\n" + "╔" + "═" * (W - 2) + "╗")
+        
+        def print_sum_line(label, value, color=None):
+            inner_w = W - 6
+            l_part = label.ljust(20)
+            # Handle list values (like env vars or args)
+            if isinstance(value, list):
+                if not value:
+                    v_part = "None".ljust(inner_w - 20)
+                    click.echo(f"║  {click.style(l_part, fg='cyan')}{v_part}  ║")
+                else:
+                    for i, item in enumerate(value):
+                        v_part = str(item).ljust(inner_w - 20)
+                        lbl = l_part if i == 0 else " ".ljust(20)
+                        click.echo(f"║  {click.style(lbl, fg='cyan')}{v_part}  ║")
+            else:
+                v_part = str(value).ljust(inner_w - 20)
+                v_styled = click.style(v_part, fg=color) if color else v_part
+                click.echo(f"║  {click.style(l_part, fg='cyan')}{v_styled}  ║")
+
+        print_sum_line("Deployment Summary", "", bold=True)
+        click.echo("╠" + "═" * (W - 2) + "╣")
+        print_sum_line("Service Name:", name)
+        print_sum_line("Region:", region)
+        
+        existing = deployer.get_service(region, name)
+        if existing:
+            print_sum_line("Last Updated:", existing.get("updateTime", "Unknown"))
+        
+        print_sum_line("Container Image:", image)
+        print_sum_line("GPU:", gpu)
+        print_sum_line("vCPUs:", "8") # Default for now
+        print_sum_line("Memory:", "16Gi") # Default for now
+        print_sum_line("Min Instances:", min_instances)
+        print_sum_line("Max Instances:", max_instances)
+        print_sum_line("Zonal Redundancy:", "Disabled (Lower Cost)" if True else "Enabled (High Availability)") # default is disabled in our tool
+        
+        print_sum_line("VPC Subnetwork:", subnet or "None")
+        print_sum_line("GCS Mount:", f"{bucket} → /gcs/{bucket}")
+
+        # Construct final env vars for display
+        display_env = []
+        if framework == "ollama":
+            display_env = [
+                f"OLLAMA_MODELS=/gcs/{bucket}/ollama/models",
+                f"MODEL={model_id}",
+                f"OLLAMA_NUM_PARALLEL=6"
+            ]
+        elif framework == "vllm":
+            display_env = ["HF_HUB_OFFLINE=1"]
+        
+        print_sum_line("Env Variables:", display_env)
+
+        # Quota Check
+        from cr_infer.quota import fetch_gpu_quota
+        try:
+            quotas = fetch_gpu_quota(client, region, gpu)
+            q_val = quotas['non_zonal'] # tool uses non-zonal by default
+            q_color = "green" if q_val > 0 else "yellow"
+            print_sum_line("Available Quota:", f"{int(q_val)} (Without Zonal Redundancy)", color=q_color)
+        except:
+            pass
+
+        click.echo("╚" + "═" * (W - 2) + "╝\n")
+
+        if not click.confirm("Proceed with deployment?", default=True):
+            return
+
         click.echo(f"Deploying service {name} to {region}...")
         op = deployer.deploy_service(
             name=name,

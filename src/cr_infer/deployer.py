@@ -35,7 +35,7 @@ class CloudRunDeployer:
             return False, f"Model estimated to need ~{est_vram_needed:.1f}GB VRAM, but {gpu_type} only has {gpu_config.vram_gb}GB."
         return True, ""
 
-    def deploy_service(
+    def build_payload(
         self,
         name: str,
         region: str,
@@ -55,7 +55,7 @@ class CloudRunDeployer:
         env_vars: Optional[Dict[str, str]] = None,
         args: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Deploy or update a Cloud Run service."""
+        """Construct the Cloud Run V2 service payload."""
         
         gpu_config = get_gpu_config(region, gpu_type)
         is_alpha = gpu_config.status == "Private Preview" if gpu_config else False
@@ -76,6 +76,8 @@ class CloudRunDeployer:
                 {"name": "OLLAMA_MODELS", "value": f"{mount_path}/ollama/models"},
                 {"name": "MODEL", "value": model_id},
                 {"name": "OLLAMA_NUM_PARALLEL", "value": str(concurrency)},
+                {"name": "OLLAMA_DEBUG", "value": "false"},
+                {"name": "OLLAMA_KEEP_ALIVE", "value": "-1"}
             ]
         elif framework == "vllm" and not final_args:
             final_args = [
@@ -88,14 +90,14 @@ class CloudRunDeployer:
         
         container_port = 11434 if framework == "ollama" else 8000
 
-        service_payload = {
+        payload = {
             "template": {
                 "containers": [{
                     "image": image,
                     "ports": [{"containerPort": container_port}],
                     "resources": {
                         "limits": {
-                            "cpu": cpu,
+                            "cpu": f"{cpu}",
                             "memory": memory,
                             "nvidia.com/gpu": "1"
                         }
@@ -114,31 +116,34 @@ class CloudRunDeployer:
         }
 
         if is_alpha:
-            service_payload["launchStage"] = "ALPHA"
+            payload["launchStage"] = "ALPHA"
 
-        # Cloud Run V2 Direct VPC Egress
         if subnet:
-            # We must use both network and subnetwork in the annotation
             interface = {"subnetwork": subnet}
             if network:
                 interface["network"] = network
 
-            service_payload["template"]["annotations"] = {
+            payload["template"]["annotations"] = {
                 "run.googleapis.com/network-interfaces": json.dumps([interface]),
                 "run.googleapis.com/vpc-access-egress": "all-traffic"
             }
+        
+        return payload
 
+    def deploy_service(
+        self,
+        name: str,
+        region: str,
+        payload: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Execute the deployment using a prepared payload."""
         existing = self.get_service(region, name)
         if existing:
-            # Update
             url = f"https://run.googleapis.com/v2/projects/{self.client.project_id}/locations/{region}/services/{name}"
-            # For update we use PATCH. We need to handle etag if we want to be safe.
-            # But let's keep it simple for now.
-            response = self.client.session.patch(url, json=service_payload)
+            response = self.client.session.patch(url, json=payload)
         else:
-            # Create
             url = f"https://run.googleapis.com/v2/projects/{self.client.project_id}/locations/{region}/services?serviceId={name}"
-            response = self.client.session.post(url, json=service_payload)
+            response = self.client.session.post(url, json=payload)
 
         response.raise_for_status()
         return response.json()

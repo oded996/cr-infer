@@ -287,13 +287,17 @@ def model_download(project, source, model_id, bucket, region, token, wait):
         
         if wait:
             click.echo("Waiting for build and streaming logs (Ctrl+C to stop waiting)...")
-            # Reuse logic from model logs
             import time
             last_logs = ""
+            printed_waiting = False
             while True:
                 status = client.get_build_status(build_id)
                 state = status.get("status")
                 
+                if state == "QUEUED" and not printed_waiting:
+                    click.echo("Build job is queued. Waiting for it to start...")
+                    printed_waiting = True
+
                 # Fetch logs from GCS if available
                 log_url = status.get("logsBucket")
                 if log_url:
@@ -306,7 +310,7 @@ def model_download(project, source, model_id, bucket, region, token, wait):
                             click.echo(new_content, nl=False)
                             last_logs = logs
                     except Exception:
-                        pass # Logs might not be ready yet
+                        pass # Logs might not be ready yet even if bucket is known
 
                 if state not in ["WORKING", "QUEUED"]:
                     click.echo(f"\nBuild finished with status: {click.style(state, bold=True)}")

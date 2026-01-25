@@ -140,10 +140,12 @@ class GCPClient:
         return []
 
     def patch_subnet(self, region: str, subnet_name: str, json: Dict[str, Any]) -> Dict[str, Any]:
-        """Patch a subnetwork (e.g., to enable PGA)."""
-        url = f"https://compute.googleapis.com/compute/v1/projects/{self.project_id}/regions/{region}/subnetworks/{subnet_name}"
-        response = self.session.patch(url, json=json)
-        response.raise_for_status()
+        """Enable Private Google Access on a subnetwork."""
+        # Compute Engine uses a specific POST method for Private Google Access
+        url = f"https://compute.googleapis.com/compute/v1/projects/{self.project_id}/regions/{region}/subnetworks/{subnet_name}/setPrivateIpGoogleAccess"
+        response = self.session.post(url, json=json)
+        if response.status_code >= 400:
+             raise Exception(f"Compute Engine API Error {response.status_code}: {response.text}")
         return response.json()
 
     def get_logs(self, filter_str: str, page_size: int = 50) -> List[Dict[str, Any]]:

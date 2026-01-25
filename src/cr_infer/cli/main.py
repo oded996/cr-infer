@@ -117,11 +117,22 @@ def quota(project, region, gpu):
         for g in gpus_to_check:
             try:
                 quotas = fetch_gpu_quota(client, r, g)
-                q_str = f"Non-Zonal: {quotas['non_zonal']}, Zonal: {quotas['zonal']}"
+                
+                # Format numbers to remove .0 if it's an integer
+                def fmt(val):
+                    return str(int(val)) if val == int(val) else str(val)
+
+                q_str = f"Non-Zonal: {fmt(quotas['non_zonal'])}, Zonal: {fmt(quotas['zonal'])}"
                 color = "green" if quotas['non_zonal'] > 0 or quotas['zonal'] > 0 else "yellow"
                 click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(q_str, fg=color)}")
             except Exception as e:
                 click.echo(f"  - {click.style(g.ljust(20), fg='white')} {click.style(f'Error: {e}', fg='red')}")
+
+    click.echo(f"\n{click.style('How to request more quota:', bold=True)} http://g.co/cloudrun/gpu-quota")
+    click.echo("\n" + click.style("Note on Cloud Run GPU Quotas:", bold=True))
+    click.echo("Cloud Run uses specific quotas to manage GPU allocation. There are two types:")
+    click.echo(f"  {click.style('1. Non-Zonal (Regional):', fg='cyan')} Recommended. Allows Cloud Run to place your service in any zone within the region.")
+    click.echo(f"  {click.style('2. Zonal:', fg='cyan')} Required if you disable 'GPU zonal redundancy'. This locks your service to a specific zone for lower costs.")
 
 @cli.group()
 def model():

@@ -34,7 +34,7 @@ def format_bytes(size):
 
 def print_service_table(service_payload: Dict[str, Any], region: str, title: str = "Service Configuration"):
     """Generic helper to print a Cloud Run service object in a nice table."""
-    W = 66
+    W = 90
     click.echo("\n" + "╔" + "═" * (W - 2) + "╗")
     
     def print_row(label, value, color=None):

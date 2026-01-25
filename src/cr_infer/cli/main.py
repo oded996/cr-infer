@@ -229,29 +229,32 @@ def model_download(project, source, model_id, bucket, token, wait):
         size_bytes = info.get("total_size", 0)
         est_vram = size_bytes * 1.2 / (1024**3)
         
-        width = 50 # Inner width of the box
-        click.echo("\n" + "╔" + "═" * width + "╗")
+        width = 52 # Total width including borders
+        inner_width = width - 4 # Space for '║  ' and '  ║'
         
-        # Title: Style the padded string
-        title_text = "Model Info Summary".ljust(width)
-        click.echo(f"║ {click.style(title_text, bold=True)} ║")
+        click.echo("\n" + "╔" + "═" * (width - 2) + "╗")
         
-        click.echo("╠" + "═" * width + "╣")
-        
-        def print_line(label, value):
-            # label (12) + space (1) + value (37) = 50
-            l_str = label.ljust(12)
-            v_str = value.ljust(width - 13)
-            click.echo(f"║ {click.style(l_str, fg='cyan')} {v_str} ║")
+        def print_box_line(content, bold=False, cyan_label=None, color=None):
+            if cyan_label:
+                l_str = cyan_label.ljust(12)
+                v_str = content.ljust(inner_width - 13)
+                click.echo(f"║  {click.style(l_str, fg='cyan')} {v_str}  ║")
+            else:
+                text = content.ljust(inner_width)
+                if bold: text = click.style(text, bold=True)
+                if color: text = click.style(text, fg=color)
+                click.echo(f"║  {text}  ║")
 
-        print_line("Model:", model_id)
-        print_line("Total Size:", format_bytes(size_bytes))
-        print_line("Est. vRAM:", f"~{est_vram:.2f} GB")
-        print_line("Region:", bucket_region)
+        print_box_line("Model Info Summary", bold=True)
+        click.echo("╠" + "═" * (width - 2) + "╣")
         
-        click.echo("║" + " " * width + "║")
-        comp_title = "Compatible GPUs:".ljust(width)
-        click.echo(f"║ {click.style(comp_title, bold=True)} ║")
+        print_box_line(model_id, cyan_label="Model:")
+        print_box_line(format_bytes(size_bytes), cyan_label="Total Size:")
+        print_box_line(f"~{est_vram:.2f} GB", cyan_label="Est. vRAM:")
+        print_box_line(bucket_region, cyan_label="Region:")
+        
+        print_box_line("")
+        print_box_line("Compatible GPUs:", bold=True)
         
         from cr_infer.config import get_region_config
         region_cfg = get_region_config(bucket_region)
@@ -259,13 +262,12 @@ def model_download(project, source, model_id, bucket, token, wait):
             for g in region_cfg.gpus:
                 status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
                 color = "green" if status == "[v]" else "red"
-                gpu_text = f"  {status} {g.name} ({g.vram_gb} GB)".ljust(width)
-                click.echo(f"║ {click.style(gpu_text, fg=color)} ║")
+                gpu_text = f"{status} {g.name} ({g.vram_gb} GB)"
+                print_box_line(gpu_text, color=color)
         else:
-             err_text = "  No GPU info for this region".ljust(width)
-             click.echo(f"║ {click.style(err_text, fg='yellow')} ║")
+             print_box_line("No GPU info for this region", color="yellow")
         
-        click.echo("╚" + "═" * width + "╝\n")
+        click.echo("╚" + "═" * (width - 2) + "╝\n")
 
         if not click.confirm("Start download?", default=True):
             return

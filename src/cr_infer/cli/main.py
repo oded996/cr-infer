@@ -236,17 +236,17 @@ def model_download(project, source, model_id, bucket, token, wait):
         click.echo("╠" + "═" * width + "╣")
         
         def print_line(label, value):
-            # label is styled, value is plain
-            line = f"║ {click.style(label, fg='cyan')} {value}"
-            # Calculate visible length (ignoring ANSI)
-            visible_len = len(label) + 1 + len(value) + 2 # 2 for the start "║ "
-            padding = width + 2 - visible_len
-            click.echo(line + " " * padding + "║")
+            # label is plain, we style it here
+            styled_label = click.style(label, fg='cyan')
+            # Width is 50. '║ ' (2) + label (11) + ' ' (1) + value + padding + ' ║' (2)
+            label_width = 11
+            value_width = width - label_width - 1
+            click.echo(f"║ {styled_label.ljust(label_width + 8)} {value.ljust(value_width)} ║")
 
-        print_line("Model:     ", model_id)
+        print_line("Model:", model_id)
         print_line("Total Size:", format_bytes(size_bytes))
-        print_line("Est. vRAM: ", f"~{est_vram:.2f} GB")
-        print_line("Region:    ", bucket_region)
+        print_line("Est. vRAM:", f"~{est_vram:.2f} GB")
+        print_line("Region:", bucket_region)
         
         click.echo("║" + " " * width + "║")
         click.echo(f"║ {click.style('Compatible GPUs:', bold=True).ljust(width + 8)} ║")
@@ -258,10 +258,7 @@ def model_download(project, source, model_id, bucket, token, wait):
                 status = "[v]" if g.vram_gb >= est_vram or size_bytes == 0 else "[x]"
                 color = "green" if status == "[v]" else "red"
                 text = f"  {status} {g.name} ({g.vram_gb} GB)"
-                # Visible length of text
-                v_len = len(text) + 2
-                pad = width + 2 - v_len
-                click.echo(f"║ {click.style(text, fg=color)}" + " " * pad + "║")
+                click.echo(f"║ {click.style(text, fg=color).ljust(width + 8)} ║")
         else:
              click.echo(f"║ {click.style('  No GPU info for this region', fg='yellow').ljust(width + 8)} ║")
         click.echo("╚" + "═" * width + "╝\n")

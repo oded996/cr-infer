@@ -559,7 +559,32 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
     client = GCPClient(project_id=project)
     deployer = CloudRunDeployer(client)
 
-    if not bucket:
+    # 1. Handle Model & Bucket Selection
+    if not bucket and not model_id:
+        from cr_infer.config import list_supported_regions
+        gpu_regions = list_supported_regions()
+        
+        click.echo("No bucket or model specified. Scanning all buckets for available models...")
+        all_buckets = client.list_buckets()
+        
+        choices = []
+        mapping = {} # choice_str -> (model_id, bucket_name)
+        
+        for b in all_buckets:
+            models_in_b = list_models_in_bucket(client, b["name"])
+            for m in models_in_b:
+                choice_str = f"{m['id']} (gs://{b['name']} in {b['location']})"
+                choices.append(choice_str)
+                mapping[choice_str] = (m["id"], b["name"])
+        
+        if not choices:
+            click.echo("No managed models found in any bucket. Use 'cr-infer model download' first.")
+            return
+        
+        selected = prompt_if_missing(None, "Model", choices=choices, message="Select model to deploy:")
+        model_id, bucket = mapping[selected]
+
+    elif not bucket:
         from cr_infer.config import list_supported_regions
         gpu_regions = list_supported_regions()
         all_buckets = client.list_buckets()
@@ -569,7 +594,7 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
         bucket_choice = prompt_if_missing(bucket, "Bucket", choices=choices, message="Select source bucket:")
         bucket = bucket_choice.split(" (")[0]
 
-    # Find bucket region
+    # Find bucket region (needed if not already found in the 'both missing' branch)
     all_buckets = client.list_buckets()
     bucket_info = next((b for b in all_buckets if b["name"] == bucket), None)
     if not bucket_info:

@@ -918,23 +918,23 @@ def service_chat(name, project, region):
         import time
         click.echo(f"Waiting for {click.style(name, fg='cyan')} to be ready (this may take a few minutes if the model is loading)...")
         
-        health_url = f"{url}/" if is_ollama else f"{url}/v1/models"
+        # Ollama root '/' might return 404 or nothing, '/api/tags' is more reliable
+        health_url = f"{url}/api/tags" if is_ollama else f"{url}/v1/models"
         ready = False
         spinner_chars = ["|", "/", "-", "\\"]
         idx = 0
         
         while not ready:
             try:
-                # Use a short timeout for the check
                 res = requests.get(health_url, headers=headers, timeout=5)
                 if res.status_code == 200:
                     ready = True
-                    click.echo("\r" + " " * 80 + "\r", nl=False) # Clear line
+                    click.echo("\r" + " " * 100 + "\r", nl=False) # Clear line
                     click.secho("✔ Service is ready!", fg="green")
                 else:
                     click.echo(f"\r {spinner_chars[idx % 4]} Status: {res.status_code}. Waiting...", nl=False)
-            except Exception:
-                click.echo(f"\r {spinner_chars[idx % 4]} Connecting...", nl=False)
+            except Exception as e:
+                click.echo(f"\r {spinner_chars[idx % 4]} Connecting... ({type(e).__name__})", nl=False)
             
             if not ready:
                 idx += 1

@@ -14,6 +14,15 @@ class CloudRunDeployer:
             return response.json()
         return None
 
+    def find_service(self, name: str) -> Optional[Tuple[Dict[str, Any], str]]:
+        """Search for a service by name across all supported regions."""
+        from cr_infer.config import list_supported_regions
+        for region in list_supported_regions():
+            svc = self.get_service(region, name)
+            if svc:
+                return svc, region
+        return None
+
     def list_services(self, region: str) -> List[Dict[str, Any]]:
         url = f"https://run.googleapis.com/v2/projects/{self.client.project_id}/locations/{region}/services"
         response = self.client.session.get(url)

@@ -15,6 +15,16 @@ def prompt_if_missing(value: Optional[str], name: str, choices: Optional[List[st
     else:
         return inquirer.text(message=msg).execute()
 
+def get_effective_project(project: Optional[str]) -> str:
+    if project:
+        return project
+    from google.auth import default
+    _, default_project = default()
+    if not default_project:
+        return prompt_if_missing(None, "Project ID", message="Project ID not found in environment. Please enter Project ID:")
+    click.echo(f"Project ID not provided. Using default project: {click.style(default_project, fg='yellow')}")
+    return default_project
+
 def print_header(text: str):
     click.echo(f"\n=== {text} ===")
 
@@ -133,10 +143,7 @@ def cli():
 @click.option("--project", "-p", help="GCP Project ID")
 def check(project):
     """Verify authentication, project permissions, and required APIs."""
-    if not project:
-        from google.auth import default
-        _, default_project = default()
-        project = prompt_if_missing(project, "Project ID", message=f"Enter Project ID (default: {default_project}):") or default_project
+    project = get_effective_project(project)
 
     try:
         client = GCPClient(project_id=project)
@@ -199,10 +206,7 @@ def quota(project, region, gpu):
     from cr_infer.quota import fetch_gpu_quota
     from cr_infer.config import list_supported_regions, list_supported_gpus
 
-    if not project:
-        from google.auth import default
-        _, default_project = default()
-        project = prompt_if_missing(project, "Project ID", message=f"Enter Project ID (default: {default_project}):") or default_project
+    project = get_effective_project(project)
 
     client = GCPClient(project_id=project)
     
@@ -262,10 +266,7 @@ def model_download(project, source, model_id, bucket, region, token, wait):
     """Download a model to GCS using Cloud Build."""
     from cr_infer.models import start_download, hf_preflight, ollama_preflight
     
-    if not project:
-        from google.auth import default
-        _, default_project = default()
-        project = prompt_if_missing(project, "Project ID", message=f"Enter Project ID (default: {default_project}):") or default_project
+    project = get_effective_project(project)
 
     client = GCPClient(project_id=project)
 
@@ -443,6 +444,7 @@ def model_download(project, source, model_id, bucket, region, token, wait):
 @click.option("--project", "-p", help="GCP Project ID")
 def model_status(build_id, project):
     """Check the status of a model download build."""
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     try:
         status = client.get_build_status(build_id)
@@ -461,6 +463,7 @@ def model_status(build_id, project):
 @click.option("--project", "-p", help="GCP Project ID")
 def model_build_logs(build_id, project):
     """Fetch logs for a model download build."""
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     try:
         status = client.get_build_status(build_id)
@@ -492,6 +495,7 @@ def models():
 def models_list(project, bucket):
     """List models tracked in GCS buckets."""
     from cr_infer.models import list_models_in_bucket
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     try:
         if bucket:
@@ -527,6 +531,7 @@ def gcs():
 @click.option("--project", "-p", help="GCP Project ID")
 def list_buckets_cmd(project):
     """List all GCS buckets in the project."""
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     try:
         buckets = client.list_buckets()
@@ -764,11 +769,7 @@ def services_list(project, region):
     from cr_infer.deployer import CloudRunDeployer
     from cr_infer.config import list_supported_regions
     
-    if not project:
-        from google.auth import default
-        _, default_project = default()
-        project = prompt_if_missing(project, "Project ID", message=f"Enter Project ID (default: {default_project}):") or default_project
-
+    project = get_effective_project(project)
     region = prompt_if_missing(region, "Region", choices=list_supported_regions())
     
     client = GCPClient(project_id=project)
@@ -790,15 +791,26 @@ def services_list(project, region):
 @services.command(name="info")
 @click.argument("name")
 @click.option("--project", "-p", help="GCP Project ID")
-@click.option("--region", "-r", required=True)
+@click.option("--region", "-r", help="GCP Region")
 @click.option("--json", "as_json", is_flag=True, help="Output raw JSON instead of a table")
 def service_info(name, project, region, as_json):
     """Show detailed information for a service."""
     from cr_infer.deployer import CloudRunDeployer
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     deployer = CloudRunDeployer(client)
     try:
-        s = deployer.get_service(region, name)
+        if region:
+            s = deployer.get_service(region, name)
+        else:
+            click.echo(f"Region not specified. Searching for service '{name}'...")
+            result = deployer.find_service(name)
+            if not result:
+                click.secho(f"Error: Service '{name}' not found in any supported region.", fg="red")
+                return
+            s, region = result
+            click.echo(f"Found service in {click.style(region, fg='cyan')}")
+
         if not s:
             click.echo(f"Service '{name}' not found in {region}.")
             return
@@ -813,13 +825,25 @@ def service_info(name, project, region, as_json):
 @services.command(name="logs")
 @click.argument("name")
 @click.option("--project", "-p", help="GCP Project ID")
-@click.option("--region", "-r", required=True)
+@click.option("--region", "-r", help="GCP Region")
 @click.option("--limit", type=int, default=20)
 @click.option("--follow", "-f", is_flag=True, help="Stream logs in real-time")
 def service_logs(name, project, region, limit, follow):
     """Fetch or stream logs for a service."""
     import time
+    from cr_infer.deployer import CloudRunDeployer
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
+    deployer = CloudRunDeployer(client)
+
+    if not region:
+        click.echo(f"Region not specified. Searching for service '{name}'...")
+        result = deployer.find_service(name)
+        if not result:
+            click.secho(f"Error: Service '{name}' not found in any supported region.", fg="red")
+            return
+        _, region = result
+        click.echo(f"Found service in {click.style(region, fg='cyan')}")
     
     # Filter for Cloud Run service logs
     filter_str = f'resource.type="cloud_run_revision" resource.labels.service_name="{name}" resource.labels.location="{region}"'
@@ -861,10 +885,23 @@ def service_logs(name, project, region, limit, follow):
 @services.command(name="delete")
 @click.argument("name")
 @click.option("--project", "-p", help="GCP Project ID")
-@click.option("--region", "-r", required=True)
+@click.option("--region", "-r", help="GCP Region")
 def service_delete(name, project, region):
     """Delete a Cloud Run service."""
+    from cr_infer.deployer import CloudRunDeployer
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
+    deployer = CloudRunDeployer(client)
+
+    if not region:
+        click.echo(f"Region not specified. Searching for service '{name}'...")
+        result = deployer.find_service(name)
+        if not result:
+            click.secho(f"Error: Service '{name}' not found in any supported region.", fg="red")
+            return
+        _, region = result
+        click.echo(f"Found service in {click.style(region, fg='cyan')}")
+
     try:
         url = f"https://run.googleapis.com/v2/projects/{client.project_id}/locations/{region}/services/{name}"
         if click.confirm(f"Are you sure you want to delete service '{name}'?"):
@@ -876,16 +913,27 @@ def service_delete(name, project, region):
 @services.command(name="chat")
 @click.argument("name")
 @click.option("--project", "-p", help="GCP Project ID")
-@click.option("--region", "-r", required=True)
+@click.option("--region", "-r", help="GCP Region")
 def service_chat(name, project, region):
     """Interactive chat with the deployed model."""
     import requests
     from cr_infer.deployer import CloudRunDeployer
+    project = get_effective_project(project)
     client = GCPClient(project_id=project)
     deployer = CloudRunDeployer(client)
     
     try:
-        s = deployer.get_service(region, name)
+        if region:
+            s = deployer.get_service(region, name)
+        else:
+            click.echo(f"Region not specified. Searching for service '{name}'...")
+            result = deployer.find_service(name)
+            if not result:
+                click.secho(f"Error: Service '{name}' not found in any supported region.", fg="red")
+                return
+            s, region = result
+            click.echo(f"Found service in {click.style(region, fg='cyan')}")
+
         if not s:
             click.echo(f"Service '{name}' not found.")
             return

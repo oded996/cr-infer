@@ -111,7 +111,18 @@ def print_service_table(service_payload: Dict[str, Any], region: str, title: str
     print_row("Env Variables:", env_list)
     print_row("Arguments:", container.get("args", []))
 
-    click.echo("╚" + "═" * (W - 2) + "╝\n")
+    click.echo("╚" + "═" * (W - 2) + "╝")
+
+    # Add console link outside the table for easy clicking
+    full_name = service_payload.get("name", "")
+    if full_name:
+        parts = full_name.split("/")
+        if len(parts) >= 6:
+            project = parts[1]
+            svc_region = parts[3]
+            svc_name = parts[5]
+            console_url = f"https://console.cloud.google.com/run/detail/{svc_region}/{svc_name}/metrics?project={project}"
+            click.echo(f"{click.style('Cloud Run Console:', bold=True)} {console_url}\n")
 
 @click.group()
 def cli():

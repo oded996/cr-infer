@@ -621,9 +621,11 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
             if not subnets:
                 click.secho(f"No subnets found in {region}. Skipping VPC.", fg="yellow")
             else:
-                default_sub = next((s for s in subnets if s["name"] == "default"), subnets[0])
-                subnet_choices = [s["name"] for s in subnets]
-                subnet = prompt_if_missing(None, "Subnet", choices=subnet_choices, message=f"Select subnet (default: {default_sub['name']}):") or default_sub["name"]
+                # Put 'default' subnet at the top if it exists
+                subnet_choices = sorted([s["name"] for s in subnets], key=lambda x: x != "default")
+                default_sub_name = "default" if "default" in subnet_choices else subnet_choices[0]
+                
+                subnet = prompt_if_missing(None, "Subnet", choices=subnet_choices, message=f"Select subnet (default: {default_sub_name}):") or default_sub_name
                 
                 # Check PGA
                 selected_sub_obj = next(s for s in subnets if s["name"] == subnet)

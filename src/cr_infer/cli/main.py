@@ -917,12 +917,34 @@ def service_chat(name, project, region):
             if model_arg:
                 model_name = model_arg.split("=")[1]
 
-        while True:
-            prompt = click.prompt("You")
-            if prompt.lower() in ["exit", "quit"]:
-                break
+        # --- Readiness Check Loop ---
+        import time
+        click.echo(f"Waiting for {click.style(name, fg='cyan')} to be ready (this may take a few minutes if the model is loading)...")
+        
+        health_url = f"{url}/" if is_ollama else f"{url}/v1/models"
+        ready = False
+        spinner_chars = ["|", "/", "-", "\\"]
+        idx = 0
+        
+        while not ready:
+            try:
+                # Use a short timeout for the check
+                res = requests.get(health_url, headers=headers, timeout=5)
+                if res.status_code == 200:
+                    ready = True
+                    click.echo("\r" + " " * 80 + "\r", nl=False) # Clear line
+                    click.secho("✔ Service is ready!", fg="green")
+                else:
+                    click.echo(f"\r {spinner_chars[idx % 4]} Status: {res.status_code}. Waiting...", nl=False)
+            except Exception:
+                click.echo(f"\r {spinner_chars[idx % 4]} Connecting...", nl=False)
             
-            chat_url = f"{url}/api/generate" if is_ollama else f"{url}/v1/chat/completions"
+            if not ready:
+                idx += 1
+                time.sleep(2)
+        # --- End Readiness Loop ---
+
+        click.echo(f"Connected to {click.style(name, fg='cyan')} at {url}")
             payload = {
                 "model": model_name,
                 "prompt": prompt,

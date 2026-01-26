@@ -892,9 +892,6 @@ def service_chat(name, project, region):
             click.echo("Service URL not available yet. Is the service still deploying?")
             return
 
-        click.echo(f"Connected to {click.style(name, fg='cyan')} at {url}")
-        click.echo("Type 'exit' to quit.\n")
-
         # Get the ID token for authentication
         id_token = client.get_id_token(url)
         headers = {

@@ -945,6 +945,14 @@ def service_chat(name, project, region):
         # --- End Readiness Loop ---
 
         click.echo(f"Connected to {click.style(name, fg='cyan')} at {url}")
+        click.echo("Type 'exit' to quit.\n")
+
+        while True:
+            prompt = click.prompt("You")
+            if prompt.lower() in ["exit", "quit"]:
+                break
+            
+            chat_url = f"{url}/api/generate" if is_ollama else f"{url}/v1/chat/completions"
             payload = {
                 "model": model_name,
                 "prompt": prompt,

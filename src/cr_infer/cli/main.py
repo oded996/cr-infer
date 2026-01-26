@@ -638,6 +638,18 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
 
     gpu = prompt_if_missing(gpu, "GPU Type", choices=list_supported_gpus(region))
     
+    # Get GPU config to determine valid CPU/Memory
+    from cr_infer.config import get_gpu_config
+    gpu_cfg = get_gpu_config(region, gpu)
+    
+    cpu = "8"
+    memory = "16Gi"
+    if gpu_cfg:
+        cpu = prompt_if_missing(None, "vCPUs", choices=gpu_cfg.validCpus, message=f"Select vCPUs (recommended: {gpu_cfg.validCpus[0]}):")
+        memory = prompt_if_missing(None, "Memory", choices=gpu_cfg.validMemory, message=f"Select Memory (recommended: {gpu_cfg.validMemory[0]}):")
+
+    framework = prompt_if_missing(framework, "Framework", choices=["ollama", "vllm", "zml"])
+    
     if not name:
         default_name = f"{framework}-{model_id.replace(':', '-').replace('/', '-')}"[:63].lower()
         name = click.prompt("Enter service name", default=default_name)
@@ -707,6 +719,8 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
             bucket_name=bucket,
             gpu_type=gpu,
             framework=framework,
+            cpu=cpu,
+            memory=memory,
             min_instances=min_instances,
             max_instances=max_instances,
             subnet=subnet,

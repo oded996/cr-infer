@@ -27,19 +27,20 @@ gcloud auth application-default login
 
 ## Installation
 
-### From Source
+### Recommended (Direct Install)
+Install the latest version directly from GitHub:
+
+```bash
+pip install git+https://github.com/oded996/cr-infer.git
+```
+
+### From Source (For Development)
 Clone the repository and install it in editable mode:
 
 ```bash
 git clone https://github.com/oded996/cr-infer.git
 cd cr-infer
 python3 -m pip install -e .
-```
-
-### Fallback (Manual execution)
-If you prefer not to install the package, you can run it directly:
-```bash
-alias cr-infer='PYTHONPATH=$(pwd)/src python3 src/cr_infer/cli/main.py'
 ```
 
 ## Quick Start

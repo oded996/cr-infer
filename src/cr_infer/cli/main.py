@@ -558,10 +558,7 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
     from cr_infer.models import list_models_in_bucket
     from cr_infer.config import list_supported_regions, list_supported_gpus
 
-    if not project:
-        from google.auth import default
-        _, default_project = default()
-        project = prompt_if_missing(project, "Project ID", message=f"Enter Project ID (default: {default_project}):") or default_project
+    project = get_effective_project(project)
 
     client = GCPClient(project_id=project)
     deployer = CloudRunDeployer(client)

@@ -654,16 +654,6 @@ def model_deploy(project, name, model_id, bucket, region, gpu, cpu, memory, fram
         else:
             effective_cpu = effective_cpu or "8"
             effective_memory = effective_memory or "16Gi"
-    
-    # Get GPU config to determine valid CPU/Memory
-    from cr_infer.config import get_gpu_config
-    gpu_cfg = get_gpu_config(region, gpu)
-    
-    cpu = "8"
-    memory = "16Gi"
-    if gpu_cfg:
-        cpu = prompt_if_missing(None, "vCPUs", choices=gpu_cfg.validCpus, message=f"Select vCPUs (recommended: {gpu_cfg.validCpus[0]}):")
-        memory = prompt_if_missing(None, "Memory", choices=gpu_cfg.validMemory, message=f"Select Memory (recommended: {gpu_cfg.validMemory[0]}):")
 
     framework = prompt_if_missing(framework, "Framework", choices=["ollama", "vllm", "zml"])
     

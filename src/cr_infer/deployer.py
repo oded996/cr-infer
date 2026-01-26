@@ -104,7 +104,15 @@ class CloudRunDeployer:
                     },
                     "env": final_env,
                     "args": final_args,
-                    "volumeMounts": [{"name": "gcs-bucket", "mount_path": mount_path}]
+                    "volumeMounts": [{"name": "gcs-bucket", "mount_path": mount_path}],
+                    "startupProbe": {
+                        "timeoutSeconds": 240,
+                        "periodSeconds": 240,
+                        "failureThreshold": 3,
+                        "tcpSocket": {
+                            "port": container_port
+                        }
+                    }
                 }],
                 "volumes": [{"name": "gcs-bucket", "gcs": {"bucket": bucket_name, "readOnly": True}}],
                 "nodeSelector": {"accelerator": gpu_type},

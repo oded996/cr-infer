@@ -877,6 +877,7 @@ def service_delete(name, project, region):
 @click.option("--region", "-r", required=True)
 def service_chat(name, project, region):
     """Interactive chat with the deployed model."""
+    import requests
     from cr_infer.deployer import CloudRunDeployer
     client = GCPClient(project_id=project)
     deployer = CloudRunDeployer(client)

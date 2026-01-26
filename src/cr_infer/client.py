@@ -86,13 +86,15 @@ class GCPClient:
     def patch(self, url: str, json: Dict[str, Any]) -> Dict[str, Any]:
         """Send a PATCH request."""
         response = self.session.patch(url, json=json)
-        response.raise_for_status()
+        if not response.ok:
+            raise Exception(f"GCP API Error {response.status_code}: {response.text}")
         return response.json()
 
     def delete(self, url: str) -> Dict[str, Any]:
         """Send a DELETE request."""
         response = self.session.delete(url)
-        response.raise_for_status()
+        if not response.ok:
+            raise Exception(f"GCP API Error {response.status_code}: {response.text}")
         return response.json()
 
     def get_build_status(self, build_id: str) -> Dict[str, Any]:

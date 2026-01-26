@@ -162,5 +162,6 @@ class CloudRunDeployer:
             url = f"https://run.googleapis.com/v2/projects/{self.client.project_id}/locations/{region}/services?serviceId={name}"
             response = self.client.session.post(url, json=payload)
 
-        response.raise_for_status()
+        if not response.ok:
+            raise Exception(f"Cloud Run API Error {response.status_code}: {response.text}")
         return response.json()

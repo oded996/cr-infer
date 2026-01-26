@@ -548,11 +548,13 @@ def list_buckets_cmd(project):
 @click.option("--bucket", "-b", help="Source GCS Bucket")
 @click.option("--region", "-r", help="GCP Region")
 @click.option("--gpu", "-g", help="GPU Type")
+@click.option("--cpu", help="vCPUs")
+@click.option("--memory", help="Memory")
 @click.option("--framework", "-f", type=click.Choice(["ollama", "vllm", "zml"]), help="Serving framework")
 @click.option("--min-instances", type=int, default=0)
 @click.option("--max-instances", type=int, default=1)
 @click.option("--subnet", help="VPC Subnet")
-def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_instances, max_instances, subnet):
+def model_deploy(project, name, model_id, bucket, region, gpu, cpu, memory, framework, min_instances, max_instances, subnet):
     """Deploy a model to Cloud Run + GPU."""
     from cr_infer.deployer import CloudRunDeployer
     from cr_infer.models import list_models_in_bucket
@@ -637,6 +639,21 @@ def model_deploy(project, name, model_id, bucket, region, gpu, framework, min_in
         framework = prompt_if_missing(framework, "Framework", choices=["ollama", "vllm", "zml"])
 
     gpu = prompt_if_missing(gpu, "GPU Type", choices=list_supported_gpus(region))
+    
+    # Get GPU config to determine minimum CPU/Memory if not provided via flags
+    from cr_infer.config import get_gpu_config
+    gpu_cfg = get_gpu_config(region, gpu)
+    
+    effective_cpu = cpu
+    effective_memory = memory
+    
+    if not effective_cpu or not effective_memory:
+        if gpu_cfg:
+            effective_cpu = effective_cpu or gpu_cfg.validCpus[0]
+            effective_memory = effective_memory or gpu_cfg.validMemory[0]
+        else:
+            effective_cpu = effective_cpu or "8"
+            effective_memory = effective_memory or "16Gi"
     
     # Get GPU config to determine valid CPU/Memory
     from cr_infer.config import get_gpu_config

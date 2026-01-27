@@ -20,7 +20,8 @@ dependencies = [
     "questionary>=2.0.1",
     "pydantic>=2.6.0",
     "rich>=13.7.0",
-    "google-api-python-client>=2.116.0"
+    "google-api-python-client>=2.116.0",
+    "requests>=2.31.0"
 ]
 
 [project.scripts]

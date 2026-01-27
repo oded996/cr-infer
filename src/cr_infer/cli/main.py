@@ -35,7 +35,8 @@ def print_status(label: str, success: bool, message: str = ""):
     click.secho(f"[{status}] {label}{msg}", fg=color)
 
 def format_bytes(size):
-    if not size: return "Unknown"
+    if size is None: return "Unknown"
+    if size == 0: return "0 B"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if size < 1024.0:
             return f"{size:.2f} {unit}"

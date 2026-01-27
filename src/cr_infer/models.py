@@ -17,18 +17,32 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
         raise Exception(f"Hugging Face model {model_id} not found or inaccessible.")
     
     data = response.json()
-    total_size = 0
-    # Try to sum up sizes if available in siblings (rare for this API but possible)
-    for sibling in data.get("siblings", []):
-        total_size += sibling.get("size", 0)
     
-    # Fallback: some models have a 'safetensors' or 'metadata' field with size
-    # But usually we'd need another API call. Let's return what we found.
+    # Try multiple ways to find the model size
+    # 1. 'safetensors' metadata (most accurate for weights)
+    safetensors = data.get("safetensors")
+    total_size = 0
+    if isinstance(safetensors, dict):
+        total_size = safetensors.get("total") or 0
+    
+    # 2. 'usedStorage' (often present for large models/LFS)
+    if total_size == 0:
+        total_size = data.get("usedStorage") or 0
+        
+    # 3. Top-level 'size' field
+    if total_size == 0:
+        total_size = data.get("size") or 0
+    
+    # 4. Sum of siblings (only if blobs=true was used, but let's try anyway)
+    if total_size == 0:
+        for sibling in data.get("siblings", []):
+            total_size += sibling.get("size") or 0
+    
     return {
         "model_id": model_id,
         "source": "huggingface",
         "exists": True,
-        "total_size": total_size
+        "total_size": total_size if total_size > 0 else None
     }
 
 def ollama_preflight(model_id: str) -> Dict[str, Any]:
@@ -140,7 +154,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
                 "entrypoint": "bash",
                 "args": [
                     "-c",
-                    "export PATH=\"/usr/local/bin:$$PATH\" && pip install huggingface_hub && hf download $_MODEL_ID --local-dir /workspace/model-repo --token $_HF_TOKEN"
+                    "export PATH=\"/usr/local/bin:$$PATH\" && pip install huggingface_hub && huggingface-cli download $_MODEL_ID --local-dir /workspace/model-repo --token $_HF_TOKEN"
                 ],
                 "id": "download_model_repo"
             },

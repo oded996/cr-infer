@@ -325,7 +325,10 @@ def model_download(project, source, model_id, bucket, region, token, wait):
             bucket_region = prompt_if_missing(None, "Region", choices=gpu_regions, message="Select a target region to check GPU compatibility:")
 
         # --- Model Info Box ---
-        size_bytes = info.get("total_size", 0)
+        size_bytes = info.get("total_size")
+        if size_bytes is None:
+            size_bytes = 0
+            
         est_vram = size_bytes * 1.2 / (1024**3)
         
         W = 54 # Fixed outer width
@@ -435,8 +438,6 @@ def model_download(project, source, model_id, bucket, region, token, wait):
         else:
             click.echo(f"Track progress with: {click.style(f'cr-infer model status {build_id}', fg='cyan')}")
             
-    except Exception as e:
-        click.secho(f"Error: {e}", fg="red")
     except Exception as e:
         click.secho(f"Error: {e}", fg="red")
 

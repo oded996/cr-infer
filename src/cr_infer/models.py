@@ -7,7 +7,7 @@ METADATA_FILE_NAME = "llm-manager-metadata.json"
 
 def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     """Check Hugging Face model existence and get total size."""
-    url = f"https://huggingface.co/api/models/{model_id}"
+    url = f"https://huggingface.co/api/models/{model_id}?blobs=true"
     headers = {}
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -19,24 +19,23 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     data = response.json()
     
     # Try multiple ways to find the model size
-    # 1. 'safetensors' metadata (most accurate for weights)
-    safetensors = data.get("safetensors")
-    total_size = 0
-    if isinstance(safetensors, dict):
-        total_size = safetensors.get("total") or 0
-    
-    # 2. 'usedStorage' (often present for large models/LFS)
-    if total_size == 0:
-        total_size = data.get("usedStorage") or 0
+    # 1. 'usedStorage' (often present for large models/LFS)
+    total_size = data.get("usedStorage") or 0
         
-    # 3. Top-level 'size' field
+    # 2. 'safetensors' metadata (most accurate for weights)
     if total_size == 0:
-        total_size = data.get("size") or 0
+        safetensors = data.get("safetensors")
+        if isinstance(safetensors, dict):
+            total_size = safetensors.get("total") or 0
     
-    # 4. Sum of siblings (only if blobs=true was used, but let's try anyway)
+    # 3. Sum of siblings (accurate when blobs=true is used)
     if total_size == 0:
         for sibling in data.get("siblings", []):
             total_size += sibling.get("size") or 0
+            
+    # 4. Top-level 'size' field
+    if total_size == 0:
+        total_size = data.get("size") or 0
     
     return {
         "model_id": model_id,

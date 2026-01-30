@@ -195,8 +195,8 @@ def check(project):
         if enabled:
             print_status(api, True, "Enabled")
         else:
-            enable_url = f"https://console.cloud.google.com/apis/library/{api}?project={client.project_id}"
-            print_status(api, False, f"Disabled - Enable at: {click.style(enable_url, fg='cyan')}")
+            enable_cmd = f"gcloud services enable {api}"
+            print_status(api, False, f"Disabled - Run: {click.style(enable_cmd, fg='cyan')}")
 
 @cli.command()
 @click.option("--project", "-p", help="GCP Project ID")

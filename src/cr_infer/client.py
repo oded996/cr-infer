@@ -68,7 +68,7 @@ class GCPClient:
         if response.status_code == 200:
             return response.json()
         elif response.status_code == 403:
-            raise Exception("Permission Denied or API not enabled for Cloud Quotas.")
+            raise Exception("Permission Denied or API not enabled for Cloud Quotas. Please run: gcloud services enable cloudquotas.googleapis.com")
         elif response.status_code == 404:
             return {}
         else:

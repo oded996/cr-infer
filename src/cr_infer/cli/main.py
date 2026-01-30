@@ -319,7 +319,7 @@ def model_download(project, source, model_id, bucket, region, token, wait):
             gpu_regions = list_supported_regions()
             all_buckets = client.list_buckets()
             valid_buckets = [b for b in all_buckets if b["location"] in gpu_regions]
-            choices = [f"{b['name']} ({b['location']})" for b in valid_buckets] + ["+ Create New Bucket"]
+            choices = ["+ Create New Bucket"] + [f"{b['name']} ({b['location']})" for b in valid_buckets]
             bucket_choice = prompt_if_missing(None, "Bucket", choices=choices, message="Select target bucket (GPU regions only):")
             
             if bucket_choice == "+ Create New Bucket":

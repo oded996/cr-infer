@@ -6,10 +6,6 @@ QUOTA_ID_MAP = {
         "non_zonal": "NvidiaL4GpuAllocNoZonalRedundancyPerProjectRegion",
         "zonal": "NvidiaL4GpuAllocPerProjectRegion"
     },
-    "nvidia-h100-80gb": {
-        "non_zonal": "NvidiaH100GpuAllocNoZonalRedundancyPerProjectRegion",
-        "zonal": "NvidiaH100GpuAllocPerProjectRegion"
-    },
     "nvidia-rtx-pro-6000": {
         "non_zonal": "NvidiaRtxPro6000GpuAllocNoZonalRedundancyPerProjectRegion",
         "zonal": "NvidiaRtxPro6000GpuAllocPerProjectRegion"

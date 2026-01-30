@@ -38,10 +38,6 @@ SUPPORTED_REGIONS: List[RegionConfig] = [
                 name="NVIDIA L4", vram_gb=24, accelerator="nvidia-l4", status="GA",
                 validCpus=["8", "12", "16"], validMemory=["16Gi", "24Gi", "32Gi"], memory_bandwidth_gb_s=300
             ),
-            GpuConfig(
-                name="NVIDIA H100", vram_gb=80, accelerator="nvidia-h100-80gb", status="Private Preview",
-                validCpus=["20", "22", "24", "26"], validMemory=["80Gi", "160Gi", "240Gi", "360Gi"], memory_bandwidth_gb_s=3350
-            ),
         ]
     ),
     RegionConfig(

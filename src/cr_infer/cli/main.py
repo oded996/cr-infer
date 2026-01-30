@@ -302,10 +302,9 @@ def model_download(project, source, model_id, bucket, region, token, wait):
                 # we should ask for one to ensure the download (via Cloud Build) will work.
                 if info.get("gated") and not token:
                     click.secho(f"\n[!] Model '{model_id}' is gated and requires a token for download.", fg="yellow")
-                    if click.confirm("Do you want to provide a Hugging Face token now?", default=True):
-                        token = prompt_if_missing(None, "HF Token")
-                        # Re-run preflight with token to be sure
-                        info = hf_preflight(model_id, token)
+                    token = prompt_if_missing(None, "HF Token")
+                    # Re-run preflight with token to be sure
+                    info = hf_preflight(model_id, token)
             except PermissionError:
                 click.secho("\n[!] This model is gated and requires a token to access its details.", fg="yellow")
                 token = prompt_if_missing(None, "HF Token")

@@ -173,12 +173,18 @@ def check(project):
         "run.services.create",
         "storage.buckets.list",
         "cloudbuild.builds.create",
-        "cloudquotas.quotas.get",
     ]
     
     results = client.check_permissions(required_permissions)
     for perm, granted in results:
         print_status(perm, granted)
+        
+    optional_permissions = [
+        "cloudquotas.quotas.get",
+    ]
+    results_opt = client.check_permissions(optional_permissions)
+    for perm, granted in results_opt:
+        print_status(perm, granted, "(Optional)" if not granted else "")
 
     # 3. API Check
     click.echo("\n--- Required APIs ---")
@@ -186,7 +192,6 @@ def check(project):
         "run.googleapis.com",
         "storage.googleapis.com",
         "cloudbuild.googleapis.com",
-        "cloudquotas.googleapis.com",
         "logging.googleapis.com"
     ]
     
@@ -197,6 +202,18 @@ def check(project):
         else:
             enable_cmd = f"gcloud services enable {api}"
             print_status(api, False, f"Disabled - Run: {click.style(enable_cmd, fg='cyan')}")
+
+    # Optional APIs
+    optional_apis = [
+        "cloudquotas.googleapis.com"
+    ]
+    for api in optional_apis:
+        enabled = client.check_api_enabled(api)
+        if enabled:
+            print_status(api, True, "Enabled (Optional)")
+        else:
+            enable_cmd = f"gcloud services enable {api}"
+            print_status(api, False, f"Disabled (Optional) - Run: {click.style(enable_cmd, fg='cyan')}")
 
 @cli.command()
 @click.option("--project", "-p", help="GCP Project ID")

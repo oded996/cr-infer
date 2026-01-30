@@ -14,7 +14,7 @@ setup(
         "google-cloud-quotas",
         "google-cloud-resource-manager",
         "google-auth",
-        "questionary",
+        "InquirerPy",
         "pydantic",
         "rich",
         "google-api-python-client"

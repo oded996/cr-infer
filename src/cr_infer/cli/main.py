@@ -293,14 +293,23 @@ def model_download(project, source, model_id, bucket, region, token, wait):
     example = "google/gemma-3-4b-it" if source == "huggingface" else "gemma3:4b"
     model_id = prompt_if_missing(model_id, "Model ID", message=f"Enter Model ID (e.g. {example}):")
 
-    if source == "huggingface" and not token:
-        if click.confirm("Is this a gated model (requires token)?", default=False):
-            token = prompt_if_missing(token, "HF Token")
-
     try:
         click.echo(f"Performing preflight check for {model_id}...")
         if source == "huggingface":
-            info = hf_preflight(model_id, token)
+            try:
+                info = hf_preflight(model_id, token)
+                # Even if we got some info, if it's gated and no token was provided,
+                # we should ask for one to ensure the download (via Cloud Build) will work.
+                if info.get("gated") and not token:
+                    click.secho(f"\n[!] Model '{model_id}' is gated and requires a token for download.", fg="yellow")
+                    if click.confirm("Do you want to provide a Hugging Face token now?", default=True):
+                        token = prompt_if_missing(None, "HF Token")
+                        # Re-run preflight with token to be sure
+                        info = hf_preflight(model_id, token)
+            except PermissionError:
+                click.secho("\n[!] This model is gated and requires a token to access its details.", fg="yellow")
+                token = prompt_if_missing(None, "HF Token")
+                info = hf_preflight(model_id, token)
         else:
             info = ollama_preflight(model_id)
         

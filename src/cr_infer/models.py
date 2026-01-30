@@ -13,10 +13,13 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
         headers["Authorization"] = f"Bearer {token}"
     
     response = requests.get(url, headers=headers)
+    if response.status_code in [401, 403]:
+        raise PermissionError(f"Hugging Face model {model_id} is gated or requires authentication.")
     if response.status_code != 200:
         raise Exception(f"Hugging Face model {model_id} not found or inaccessible.")
     
     data = response.json()
+    is_gated = data.get("gated")
     
     # Try multiple ways to find the model size
     # 1. 'usedStorage' (often present for large models/LFS)
@@ -37,11 +40,16 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     if total_size == 0:
         total_size = data.get("size") or 0
     
+    # If it's gated and we still have no size, it's highly likely we need a token
+    if is_gated and total_size == 0 and not token:
+        raise PermissionError(f"Hugging Face model {model_id} is gated and requires a token to access metadata.")
+        
     return {
         "model_id": model_id,
         "source": "huggingface",
         "exists": True,
-        "total_size": total_size if total_size > 0 else None
+        "total_size": total_size if total_size > 0 else None,
+        "gated": is_gated
     }
 
 def ollama_preflight(model_id: str) -> Dict[str, Any]:

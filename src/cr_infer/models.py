@@ -108,13 +108,29 @@ def update_metadata(client: GCPClient, bucket_name: str, model_data: Dict[str, A
     upload_url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket_name}/o?uploadType=media&name={METADATA_FILE_NAME}"
     client.session.post(upload_url, data=json.dumps(metadata, indent=2), headers={"Content-Type": "application/json"})
 
-def start_download(client: GCPClient, source: str, model_id: str, bucket_name: str, hf_token: Optional[str] = None) -> str:
+def start_download(client: GCPClient, source: str, model_id: str, bucket_name: str, hf_token: Optional[str] = None, use_secret: bool = False) -> str:
     """Start Cloud Build job for downloading a model."""
     substitutions = {
         "_MODEL_ID": model_id,
         "_BUCKET_NAME": bucket_name,
     }
-    if hf_token:
+    
+    available_secrets = None
+    hf_token_env = "$_HF_TOKEN"
+    
+    if use_secret:
+        # Import here to avoid circular dependency if any
+        from cr_infer.secrets import HF_TOKEN_SECRET_NAME
+        available_secrets = {
+            "secretManager": [
+                {
+                    "versionName": f"projects/{client.project_id}/secrets/{HF_TOKEN_SECRET_NAME}/versions/latest",
+                    "env": "HF_TOKEN"
+                }
+            ]
+        }
+        hf_token_env = "$$HF_TOKEN"
+    elif hf_token:
         substitutions["_HF_TOKEN"] = hf_token
 
     # Step to update metadata to 'completed'
@@ -155,16 +171,20 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
     ]
 
     if source == "huggingface":
+        step = {
+            "name": "python:3.10-slim",
+            "entrypoint": "bash",
+            "args": [
+                "-c",
+                f"pip install huggingface_hub && hf download $_MODEL_ID --local-dir /workspace/model-repo --token {hf_token_env}"
+            ],
+            "id": "download_model_repo"
+        }
+        if use_secret:
+            step["secretEnv"] = ["HF_TOKEN"]
+            
         steps = [
-            {
-                "name": "python:3.10-slim",
-                "entrypoint": "bash",
-                "args": [
-                    "-c",
-                    "pip install huggingface_hub && hf download $_MODEL_ID --local-dir /workspace/model-repo --token $_HF_TOKEN"
-                ],
-                "id": "download_model_repo"
-            },
+            step,
             {
                 "name": "gcr.io/cloud-builders/gsutil",
                 "args": ["-m", "cp", "-r", "/workspace/model-repo", "gs://$_BUCKET_NAME/$_MODEL_ID"],
@@ -200,6 +220,9 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
         "options": {"machineType": "E2_HIGHCPU_8"},
         "substitutions": substitutions
     }
+    
+    if available_secrets:
+        build_config["availableSecrets"] = available_secrets
 
     operation = client.trigger_build(build_config)
     build_id = operation.get("metadata", {}).get("build", {}).get("id") or operation.get("name", "").split("/")[-1]

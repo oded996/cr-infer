@@ -1,6 +1,6 @@
 import google.auth
 from google.auth.transport.requests import AuthorizedSession
-from typing import List, Tuple, Dict, Any
+from typing import List, Tuple, Dict, Any, Optional
 
 class GCPClient:
     def __init__(self, project_id: str = None):
@@ -190,3 +190,37 @@ class GCPClient:
         response = self.session.request(method, url, **kwargs)
         response.raise_for_status()
         return response.json()
+
+    def get_secret(self, secret_id: str) -> Optional[Dict[str, Any]]:
+        """Fetch secret metadata."""
+        url = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets/{secret_id}"
+        response = self.session.get(url)
+        if response.status_code == 200:
+            return response.json()
+        return None
+
+    def create_secret(self, secret_id: str) -> Dict[str, Any]:
+        """Create a new secret container."""
+        url = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets?secretId={secret_id}"
+        body = {"replication": {"automatic": {}}}
+        response = self.session.post(url, json=body)
+        response.raise_for_status()
+        return response.json()
+
+    def add_secret_version(self, secret_id: str, payload: str) -> Dict[str, Any]:
+        """Add a new version to a secret."""
+        import base64
+        url = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets/{secret_id}:addVersion"
+        body = {"payload": {"data": base64.b64encode(payload.encode()).decode()}}
+        response = self.session.post(url, json=body)
+        response.raise_for_status()
+        return response.json()
+
+    def access_secret(self, secret_id: str, version: str = "latest") -> str:
+        """Access a secret version's value."""
+        import base64
+        url = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets/{secret_id}/versions/{version}:access"
+        response = self.session.get(url)
+        response.raise_for_status()
+        data = response.json().get("payload", {}).get("data", "")
+        return base64.b64decode(data).decode()

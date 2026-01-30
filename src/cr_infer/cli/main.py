@@ -173,6 +173,10 @@ def check(project):
         "run.services.create",
         "storage.buckets.list",
         "cloudbuild.builds.create",
+        "secretmanager.secrets.get",
+        "secretmanager.secrets.create",
+        "secretmanager.versions.add",
+        "secretmanager.versions.access"
     ]
     
     results = client.check_permissions(required_permissions)
@@ -192,7 +196,8 @@ def check(project):
         "run.googleapis.com",
         "storage.googleapis.com",
         "cloudbuild.googleapis.com",
-        "logging.googleapis.com"
+        "logging.googleapis.com",
+        "secretmanager.googleapis.com"
     ]
     
     for api in required_apis:
@@ -283,6 +288,7 @@ def model():
 def model_download(project, source, model_id, bucket, region, token, wait):
     """Download a model to GCS using Cloud Build."""
     from cr_infer.models import start_download, hf_preflight, ollama_preflight
+    from cr_infer.secrets import ensure_hf_token
     
     project = get_effective_project(project)
 
@@ -295,19 +301,24 @@ def model_download(project, source, model_id, bucket, region, token, wait):
 
     try:
         click.echo(f"Performing preflight check for {model_id}...")
+        is_secret = False
         if source == "huggingface":
+            # If token provided via flag, offer to save it but don't prompt yet if missing
+            if token:
+                token, is_secret = ensure_hf_token(client, token)
+            
             try:
                 info = hf_preflight(model_id, token)
-                # Even if we got some info, if it's gated and no token was provided,
-                # we should ask for one to ensure the download (via Cloud Build) will work.
+                # If gated and we still don't have a token, we definitely need one
                 if info.get("gated") and not token:
                     click.secho(f"\n[!] Model '{model_id}' is gated and requires a token for download.", fg="yellow")
-                    token = prompt_if_missing(None, "HF Token")
-                    # Re-run preflight with token to be sure
+                    token, is_secret = ensure_hf_token(client)
+                    # Re-run preflight with the new token to confirm access and get metadata
                     info = hf_preflight(model_id, token)
             except PermissionError:
-                click.secho("\n[!] This model is gated and requires a token to access its details.", fg="yellow")
-                token = prompt_if_missing(None, "HF Token")
+                # This happens for gated models when no token (or wrong token) is provided
+                click.secho("\n[!] This model is gated or private and requires a token to access.", fg="yellow")
+                token, is_secret = ensure_hf_token(client)
                 info = hf_preflight(model_id, token)
         else:
             info = ollama_preflight(model_id)
@@ -403,7 +414,7 @@ def model_download(project, source, model_id, bucket, region, token, wait):
             return
 
         click.echo(f"Submitting Cloud Build download job...")
-        build_id = start_download(client, source, model_id, bucket, token)
+        build_id = start_download(client, source, model_id, bucket, hf_token=token, use_secret=is_secret)
         
         console_url = f"https://console.cloud.google.com/cloud-build/builds/{build_id}?project={client.project_id}"
         click.secho(f"✔ Build started: {build_id}", fg="green", bold=True)
@@ -1005,10 +1016,20 @@ def service_chat(name, project, region):
             # Extract from MODEL env var
             model_name = next((e["value"] for e in container.get("env", []) if e["name"] == "MODEL"), "default")
         else:
-            # For vLLM, it's often in --model arg
+            # For vLLM, it's often in --model arg as /gcs/bucket/model-id
             model_arg = next((a for a in container.get("args", []) if a.startswith("--model=")), None)
             if model_arg:
-                model_name = model_arg.split("=")[1]
+                full_path = model_arg.split("=")[1]
+                # If it's a GCS path, extract just the model ID part
+                if full_path.startswith("/gcs/"):
+                    # /gcs/bucket_name/model_id -> model_id
+                    parts = full_path.split("/")
+                    if len(parts) > 3:
+                        model_name = "/".join(parts[3:])
+                    else:
+                        model_name = full_path
+                else:
+                    model_name = full_path
 
         # --- Readiness Check Loop ---
         import time
@@ -1020,6 +1041,8 @@ def service_chat(name, project, region):
         spinner_chars = ["|", "/", "-", "\\"]
         idx = 0
         
+        detected_model_name = None
+        
         while not ready:
             try:
                 res = requests.get(health_url, headers=headers, timeout=5)
@@ -1027,6 +1050,22 @@ def service_chat(name, project, region):
                     ready = True
                     click.echo("\r" + " " * 100 + "\r", nl=False) # Clear line
                     click.secho("✔ Service is ready!", fg="green")
+                    
+                    # Try to detect the actual model name from the API
+                    try:
+                        data = res.json()
+                        if is_ollama:
+                            # Ollama response has "models": [{"name": "..."}]
+                            models = data.get("models", [])
+                            if models:
+                                detected_model_name = models[0].get("name")
+                        else:
+                            # OpenAI style has "data": [{"id": "..."}]
+                            models = data.get("data", [])
+                            if models:
+                                detected_model_name = models[0].get("id")
+                    except:
+                        pass
                 else:
                     click.echo(f"\r {spinner_chars[idx % 4]} Status: {res.status_code}. Waiting...", nl=False)
             except Exception as e:
@@ -1036,6 +1075,11 @@ def service_chat(name, project, region):
                 idx += 1
                 time.sleep(2)
         # --- End Readiness Loop ---
+
+        if detected_model_name:
+            if detected_model_name != model_name:
+                # Silently update to the correct one if detected
+                model_name = detected_model_name
 
         click.echo(f"Connected to {click.style(name, fg='cyan')} at {url}")
         click.echo("Type 'exit' to quit.\n")

@@ -161,7 +161,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
                 "entrypoint": "bash",
                 "args": [
                     "-c",
-                    "export PATH=\"/usr/local/bin:$$PATH\" && pip install huggingface_hub && huggingface-cli download $_MODEL_ID --local-dir /workspace/model-repo --token $_HF_TOKEN"
+                    "pip install huggingface_hub && hash -r && huggingface-cli download $_MODEL_ID --local-dir /workspace/model-repo --token $_HF_TOKEN"
                 ],
                 "id": "download_model_repo"
             },

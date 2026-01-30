@@ -177,6 +177,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
             {
                 "name": "ollama/ollama",
                 "entrypoint": "bash",
+                "env": ["HOME=/workspace"],
                 "args": [
                     "-c",
                     "ollama serve & sleep 5 && ollama pull $_MODEL_ID"
@@ -185,7 +186,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
             },
             {
                 "name": "gcr.io/cloud-builders/gsutil",
-                "args": ["-m", "cp", "-r", "/root/.ollama/*", "gs://$_BUCKET_NAME/ollama/"],
+                "args": ["-m", "cp", "-r", "/workspace/.ollama/*", "gs://$_BUCKET_NAME/ollama/"],
                 "id": "upload_to_gcs"
             },
             *common_final_steps

@@ -21,7 +21,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "cr-infer=cr_infer.cli.main:app",
+            "cr-infer=cr_infer.cli.main:cli",
         ],
     },
 )

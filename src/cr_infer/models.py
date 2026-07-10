@@ -22,14 +22,16 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     is_gated = data.get("gated")
     
     # Try multiple ways to find the model size
-    # 1. 'usedStorage' (often present for large models/LFS)
-    total_size = data.get("usedStorage") or 0
+    total_size = 0
+    
+    # 1. 'safetensors' metadata (most accurate for weights)
+    safetensors = data.get("safetensors")
+    if isinstance(safetensors, dict):
+        total_size = safetensors.get("total") or 0
         
-    # 2. 'safetensors' metadata (most accurate for weights)
+    # 2. 'usedStorage' (often present for large models/LFS, but includes all repo history and alternative formats)
     if total_size == 0:
-        safetensors = data.get("safetensors")
-        if isinstance(safetensors, dict):
-            total_size = safetensors.get("total") or 0
+        total_size = data.get("usedStorage") or 0
     
     # 3. Sum of siblings (accurate when blobs=true is used)
     if total_size == 0:
@@ -48,6 +50,7 @@ def hf_preflight(model_id: str, token: Optional[str] = None) -> Dict[str, Any]:
         "model_id": model_id,
         "source": "huggingface",
         "exists": True,
+        "size": total_size if total_size > 0 else 0,
         "total_size": total_size if total_size > 0 else None,
         "gated": is_gated
     }
@@ -75,6 +78,7 @@ def ollama_preflight(model_id: str) -> Dict[str, Any]:
         "model_id": model_id,
         "source": "ollama",
         "exists": True,
+        "size": total_size,
         "total_size": total_size,
         "manifest": manifest
     }
@@ -108,7 +112,7 @@ def update_metadata(client: GCPClient, bucket_name: str, model_data: Dict[str, A
     upload_url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket_name}/o?uploadType=media&name={METADATA_FILE_NAME}"
     client.session.post(upload_url, data=json.dumps(metadata, indent=2), headers={"Content-Type": "application/json"})
 
-def start_download(client: GCPClient, source: str, model_id: str, bucket_name: str, hf_token: Optional[str] = None, use_secret: bool = False) -> str:
+def start_download(client: GCPClient, source: str, model_id: str, bucket_name: str, hf_token: Optional[str] = None, use_secret: bool = False, size: Optional[int] = 0) -> str:
     """Start Cloud Build job for downloading a model."""
     substitutions = {
         "_MODEL_ID": model_id,
@@ -116,7 +120,7 @@ def start_download(client: GCPClient, source: str, model_id: str, bucket_name: s
     }
     
     available_secrets = None
-    hf_token_env = "$_HF_TOKEN"
+    token_flag = ""
     
     if use_secret:
         # Import here to avoid circular dependency if any
@@ -129,9 +133,10 @@ def start_download(client: GCPClient, source: str, model_id: str, bucket_name: s
                 }
             ]
         }
-        hf_token_env = "$$HF_TOKEN"
+        token_flag = "--token $$HF_TOKEN"
     elif hf_token:
         substitutions["_HF_TOKEN"] = hf_token
+        token_flag = "--token $_HF_TOKEN"
 
     # Step to update metadata to 'completed'
     update_metadata_script = """
@@ -141,7 +146,7 @@ bucket = os.environ['_BUCKET_NAME']
 model_id = os.environ['_MODEL_ID']
 
 # Download current metadata
-subprocess.run(['gsutil', 'cp', f'gs://{bucket}/{metadata_file}', metadata_file])
+subprocess.run(['gcloud', 'storage', 'cp', f'gs://{bucket}/{metadata_file}', metadata_file])
 
 with open(metadata_file, 'r') as f:
     metadata = json.load(f)
@@ -154,12 +159,12 @@ for m in metadata.get('models', []):
 # Upload updated metadata
 with open(metadata_file, 'w') as f:
     json.dump(metadata, f, indent=2)
-subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}'])
+subprocess.run(['gcloud', 'storage', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}'])
 """
 
     common_final_steps = [
         {
-            "name": "gcr.io/cloud-builders/gsutil",
+            "name": "gcr.io/google.com/cloudsdktool/google-cloud-cli",
             "entrypoint": "python3",
             "args": ["-c", update_metadata_script],
             "id": "update_metadata_success",
@@ -176,7 +181,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
             "entrypoint": "bash",
             "args": [
                 "-c",
-                f"pip install huggingface_hub && hf download $_MODEL_ID --local-dir /workspace/model-repo --token {hf_token_env}"
+                f"pip install huggingface_hub && hf download $_MODEL_ID --local-dir /workspace/model-repo {token_flag}"
             ],
             "id": "download_model_repo"
         }
@@ -186,8 +191,9 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
         steps = [
             step,
             {
-                "name": "gcr.io/cloud-builders/gsutil",
-                "args": ["-m", "cp", "-r", "/workspace/model-repo", "gs://$_BUCKET_NAME/$_MODEL_ID"],
+                "name": "gcr.io/google.com/cloudsdktool/google-cloud-cli",
+                "entrypoint": "gcloud",
+                "args": ["storage", "cp", "-r", "/workspace/model-repo", "gs://$_BUCKET_NAME/$_MODEL_ID"],
                 "id": "Upload to GCS"
             },
             *common_final_steps
@@ -205,8 +211,9 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
                 "id": "download_ollama_model"
             },
             {
-                "name": "gcr.io/cloud-builders/gsutil",
-                "args": ["-m", "cp", "-r", "/workspace/.ollama/*", "gs://$_BUCKET_NAME/ollama/"],
+                "name": "gcr.io/google.com/cloudsdktool/google-cloud-cli",
+                "entrypoint": "gcloud",
+                "args": ["storage", "cp", "-r", "/workspace/.ollama/*", "gs://$_BUCKET_NAME/ollama/"],
                 "id": "upload_to_gcs"
             },
             *common_final_steps
@@ -231,6 +238,7 @@ subprocess.run(['gsutil', 'cp', metadata_file, f'gs://{bucket}/{metadata_file}']
     model_data = {
         "id": model_id,
         "source": source,
+        "size": size or 0,
         "status": "downloading",
         "buildId": build_id,
         "submittedAt": "now" # Simple placeholder

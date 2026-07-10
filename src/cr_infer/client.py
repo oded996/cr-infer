@@ -44,13 +44,17 @@ class GCPClient:
             return False, str(e)
 
     def check_permissions(self, permissions: List[str]) -> List[Tuple[str, bool]]:
-        url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{self.project_id}:testIamPermissions"
+        # Use v3 for more reliable permission testing on modern projects
+        url = f"https://cloudresourcemanager.googleapis.com/v3/projects/{self.project_id}:testIamPermissions"
         body = {"permissions": permissions}
-        response = self.session.post(url, json=body)
-        if response.status_code == 200:
-            granted = response.json().get("permissions", [])
-            return [(p, p in granted) for p in permissions]
-        else:
+        try:
+            response = self.session.post(url, json=body)
+            if response.status_code == 200:
+                granted = response.json().get("permissions", [])
+                return [(p, p in granted) for p in permissions]
+            else:
+                return [(p, False) for p in permissions]
+        except Exception:
             return [(p, False) for p in permissions]
 
     def check_api_enabled(self, service_name: str) -> bool:
@@ -113,6 +117,45 @@ class GCPClient:
         response.raise_for_status()
         return ""
 
+    def stream_build_logs(self, build_id: str, follow: bool = False):
+        """Fetch and print logs for a Cloud Build task."""
+        import time, sys
+        printed_length = 0
+
+        while True:
+            try:
+                build_info = self.get_build_status(build_id)
+            except Exception as e:
+                print(f"Error fetching build status: {e}")
+                break
+
+            status = build_info.get("status", "UNKNOWN")
+            logs_bucket_uri = build_info.get("logsBucket", "")
+            
+            if logs_bucket_uri.startswith("gs://"):
+                path = logs_bucket_uri[5:]
+                parts = path.split("/", 1)
+                bucket = parts[0]
+                prefix = parts[1] if len(parts) > 1 else ""
+                log_object = f"{prefix}/log-{build_id}.txt" if prefix else f"log-{build_id}.txt"
+
+                try:
+                    full_logs = self.get_build_logs(bucket, log_object)
+                    if len(full_logs) > printed_length:
+                        new_content = full_logs[printed_length:]
+                        sys.stdout.write(new_content)
+                        sys.stdout.flush()
+                        printed_length = len(full_logs)
+                except Exception:
+                    pass
+
+            if status in ["SUCCESS", "FAILURE", "INTERNAL_ERROR", "TIMEOUT", "CANCELLED"] or not follow:
+                if not follow and printed_length == 0:
+                    print(f"Build status: {status}. (Logs not available yet or could not be read from {logs_bucket_uri})")
+                break
+
+            time.sleep(3)
+
     def list_buckets(self) -> List[Dict[str, str]]:
         """List GCS buckets in the project with their locations."""
         url = f"https://storage.googleapis.com/storage/v1/b?project={self.project_id}"
@@ -132,6 +175,27 @@ class GCPClient:
         response = self.session.post(url, json=body)
         response.raise_for_status()
         return response.json()
+
+    def get_gcs_prefix_size(self, bucket: str, prefix: str) -> int:
+        """Calculate total size in bytes of objects in a GCS prefix."""
+        url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o?prefix={prefix}"
+        total_bytes = 0
+        while url:
+            try:
+                response = self.session.get(url)
+                if not response.ok:
+                    break
+                data = response.json()
+                for item in data.get("items", []):
+                    total_bytes += int(item.get("size", 0))
+                next_token = data.get("nextPageToken")
+                if next_token:
+                    url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o?prefix={prefix}&pageToken={next_token}"
+                else:
+                    url = None
+            except Exception:
+                break
+        return total_bytes
 
     def list_subnets(self, region: str) -> List[Dict[str, Any]]:
         """List subnets in a region."""
@@ -215,6 +279,37 @@ class GCPClient:
         response = self.session.post(url, json=body)
         response.raise_for_status()
         return response.json()
+
+    def get_project_number(self) -> str:
+        """Get the numeric project number."""
+        url = f"https://cloudresourcemanager.googleapis.com/v1/projects/{self.project_id}"
+        response = self.session.get(url)
+        response.raise_for_status()
+        return response.json().get("projectNumber")
+
+    def grant_secret_access(self, secret_id: str, service_account_email: str):
+        """Grant secretAccessor role to a service account on a specific secret."""
+        url_get = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets/{secret_id}:getIamPolicy"
+        policy_resp = self.session.get(url_get)
+        policy_resp.raise_for_status()
+        policy = policy_resp.json()
+        
+        bindings = policy.get("bindings", [])
+        # Check if already granted
+        for b in bindings:
+            if b.get("role") == "roles/secretmanager.secretAccessor":
+                if f"serviceAccount:{service_account_email}" in b.get("members", []):
+                    return # Already granted
+        
+        bindings.append({
+            "role": "roles/secretmanager.secretAccessor",
+            "members": [f"serviceAccount:{service_account_email}"]
+        })
+        policy["bindings"] = bindings
+        
+        url_set = f"https://secretmanager.googleapis.com/v1/projects/{self.project_id}/secrets/{secret_id}:setIamPolicy"
+        set_resp = self.session.post(url_set, json={"policy": policy})
+        set_resp.raise_for_status()
 
     def access_secret(self, secret_id: str, version: str = "latest") -> str:
         """Access a secret version's value."""

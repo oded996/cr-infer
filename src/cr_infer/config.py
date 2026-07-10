@@ -9,6 +9,7 @@ class GpuConfig(BaseModel):
     validCpus: List[str]
     validMemory: List[str]
     memory_bandwidth_gb_s: int
+    gpu_count: str = "1"
 
 class RegionConfig(BaseModel):
     name: str
@@ -25,8 +26,13 @@ SUPPORTED_REGIONS: List[RegionConfig] = [
                 validCpus=["8", "12", "16"], validMemory=["16Gi", "24Gi", "32Gi"], memory_bandwidth_gb_s=300
             ),
             GpuConfig(
-                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="GA",
                 validCpus=["20", "22", "24", "30"], validMemory=["80Gi", "88Gi", "96Gi", "120Gi"], memory_bandwidth_gb_s=1600
+            ),
+            GpuConfig(
+                name="1/2 NVIDIA RTX 6000 Pro", vram_gb=48, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                validCpus=["10", "12", "14", "16"], validMemory=["40Gi", "48Gi", "56Gi", "64Gi"], memory_bandwidth_gb_s=800,
+                gpu_count="0.5"
             ),
         ]
     ),
@@ -59,8 +65,13 @@ SUPPORTED_REGIONS: List[RegionConfig] = [
                 validCpus=["8", "12", "16"], validMemory=["16Gi", "24Gi", "32Gi"], memory_bandwidth_gb_s=300
             ),
             GpuConfig(
-                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="GA",
                 validCpus=["20", "22", "24", "30"], validMemory=["80Gi", "88Gi", "96Gi", "120Gi"], memory_bandwidth_gb_s=1600
+            ),
+            GpuConfig(
+                name="1/2 NVIDIA RTX 6000 Pro", vram_gb=48, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                validCpus=["10", "12", "14", "16"], validMemory=["40Gi", "48Gi", "56Gi", "64Gi"], memory_bandwidth_gb_s=800,
+                gpu_count="0.5"
             ),
         ]
     ),
@@ -73,8 +84,13 @@ SUPPORTED_REGIONS: List[RegionConfig] = [
                 validCpus=["8", "12", "16"], validMemory=["16Gi", "24Gi", "32Gi"], memory_bandwidth_gb_s=300
             ),
             GpuConfig(
-                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="GA",
                 validCpus=["20", "22", "24", "30"], validMemory=["80Gi", "88Gi", "96Gi", "120Gi"], memory_bandwidth_gb_s=1600
+            ),
+            GpuConfig(
+                name="1/2 NVIDIA RTX 6000 Pro", vram_gb=48, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                validCpus=["10", "12", "14", "16"], validMemory=["40Gi", "48Gi", "56Gi", "64Gi"], memory_bandwidth_gb_s=800,
+                gpu_count="0.5"
             ),
         ]
     ),
@@ -93,8 +109,13 @@ SUPPORTED_REGIONS: List[RegionConfig] = [
         description="Delhi",
         gpus=[
             GpuConfig(
-                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                name="NVIDIA RTX 6000 Pro", vram_gb=96, accelerator="nvidia-rtx-pro-6000", status="GA",
                 validCpus=["20", "22", "24", "30"], validMemory=["80Gi", "88Gi", "96Gi", "120Gi"], memory_bandwidth_gb_s=1600
+            ),
+            GpuConfig(
+                name="1/2 NVIDIA RTX 6000 Pro", vram_gb=48, accelerator="nvidia-rtx-pro-6000", status="Private Preview",
+                validCpus=["10", "12", "14", "16"], validMemory=["40Gi", "48Gi", "56Gi", "64Gi"], memory_bandwidth_gb_s=800,
+                gpu_count="0.5"
             ),
         ]
     ),
@@ -111,7 +132,7 @@ def get_gpu_config(region_name: str, accelerator: str) -> Optional[GpuConfig]:
     if not region:
         return None
     for g in region.gpus:
-        if g.accelerator == accelerator:
+        if g.accelerator == accelerator or g.name == accelerator:
             return g
     return None
 
@@ -122,4 +143,5 @@ def list_supported_gpus(region_name: str) -> List[str]:
     region = get_region_config(region_name)
     if not region:
         return []
-    return [g.accelerator for g in region.gpus]
+    # Return names instead of accelerator IDs to avoid duplicates (e.g. 1/2 vs Full)
+    return [g.name for g in region.gpus]

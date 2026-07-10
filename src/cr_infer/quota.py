@@ -29,7 +29,11 @@ def normalize_value(gpu_accelerator: str, value: int) -> float:
 
 def fetch_gpu_quota(client: GCPClient, region: str, gpu_type: str) -> Dict[str, float]:
     """Fetch both zonal and non-zonal quotas for a GPU type in a region."""
-    ids = QUOTA_ID_MAP.get(gpu_type)
+    from cr_infer.config import get_gpu_config
+    gpu_cfg = get_gpu_config(region, gpu_type)
+    accelerator = gpu_cfg.accelerator if gpu_cfg else gpu_type
+
+    ids = QUOTA_ID_MAP.get(accelerator)
     if not ids:
         raise ValueError(f"Unsupported GPU type: {gpu_type}")
 
@@ -40,6 +44,6 @@ def fetch_gpu_quota(client: GCPClient, region: str, gpu_type: str) -> Dict[str, 
     zonal_limit = get_regional_value(zonal_info, region)
 
     return {
-        "non_zonal": normalize_value(gpu_type, non_zonal_limit),
-        "zonal": normalize_value(gpu_type, zonal_limit)
+        "non_zonal": normalize_value(accelerator, non_zonal_limit),
+        "zonal": normalize_value(accelerator, zonal_limit)
     }

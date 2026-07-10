@@ -62,16 +62,16 @@ class CloudRunDeployer:
         subnet: Optional[str] = None,
         network: Optional[str] = None,
         env_vars: Optional[Dict[str, str]] = None,
-        args: Optional[List[str]] = None
+        args: Optional[List[str]] = None,
+        dflash_model: Optional[str] = None
     ) -> Dict[str, Any]:
         """Construct the Cloud Run V2 service payload."""
         
         gpu_config = get_gpu_config(region, gpu_type)
         is_alpha = gpu_config.status == "Private Preview" if gpu_config else False
+        gpu_count = gpu_config.gpu_count if gpu_config else "1"
         
         mount_path = f"/gcs/{bucket_name}"
-        if framework == "zml":
-            mount_path = "/model"
 
         # Construct default env and args if not provided
         final_env = []
@@ -91,13 +91,35 @@ class CloudRunDeployer:
         elif framework == "vllm" and not final_args:
             final_args = [
                 f"--model={mount_path}/{model_id}",
+                f"--served-model-name={model_id}",
                 "--load-format=runai_streamer",
                 "--tensor-parallel-size=1",
                 "--port=8000",
-                "--gpu-memory-utilization=0.8"
+                "--gpu-memory-utilization=0.9",
+                "--max-model-len=32768"
             ]
+        elif framework == "zml" and not final_args:
+            final_args = [
+                f"--model=gs://{bucket_name}/{model_id}"
+            ]
+            if dflash_model:
+                dflash_val = dflash_model if "://" in dflash_model else f"gs://{bucket_name}/{dflash_model}"
+                final_args.append(f"--dflash-model={dflash_val}")
         
         container_port = 11434 if framework == "ollama" else 8000
+
+        # Cloud Run API supports fractional GPUs (e.g. "0.5") when launchStage is set to ALPHA.
+        try:
+            f_count = float(gpu_count)
+            if f_count.is_integer():
+                gpu_limit = str(int(f_count))
+            else:
+                gpu_limit = str(f_count)
+        except (ValueError, TypeError):
+            gpu_limit = "1"
+
+        volume_mounts = [] if framework == "zml" else [{"name": "gcs-bucket", "mount_path": mount_path}]
+        volumes = [] if framework == "zml" else [{"name": "gcs-bucket", "gcs": {"bucket": bucket_name, "readOnly": True}}]
 
         payload = {
             "template": {
@@ -108,23 +130,23 @@ class CloudRunDeployer:
                         "limits": {
                             "cpu": f"{cpu}",
                             "memory": memory,
-                            "nvidia.com/gpu": "1"
+                            "nvidia.com/gpu": gpu_limit
                         }
                     },
                     "env": final_env,
                     "args": final_args,
-                    "volumeMounts": [{"name": "gcs-bucket", "mount_path": mount_path}],
+                    "volumeMounts": volume_mounts,
                     "startupProbe": {
                         "timeoutSeconds": 240,
                         "periodSeconds": 240,
-                        "failureThreshold": 3,
+                        "failureThreshold": 10,
                         "tcpSocket": {
                             "port": container_port
                         }
                     }
                 }],
-                "volumes": [{"name": "gcs-bucket", "gcs": {"bucket": bucket_name, "readOnly": True}}],
-                "nodeSelector": {"accelerator": gpu_type},
+                "volumes": volumes,
+                "nodeSelector": {"accelerator": gpu_config.accelerator if gpu_config else gpu_type},
                 "scaling": {"minInstanceCount": min_instances, "maxInstanceCount": max_instances},
                 "maxInstanceRequestConcurrency": concurrency,
                 "gpuZonalRedundancyDisabled": gpu_zonal_redundancy_disabled

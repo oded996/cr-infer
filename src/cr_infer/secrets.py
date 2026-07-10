@@ -60,7 +60,13 @@ def _save_token(client: GCPClient, token: str):
         if not client.get_secret(HF_TOKEN_SECRET_NAME):
             client.create_secret(HF_TOKEN_SECRET_NAME)
         client.add_secret_version(HF_TOKEN_SECRET_NAME, token)
-        print(f"✔ Token saved to Secret Manager: {HF_TOKEN_SECRET_NAME}")
+        
+        # Grant Cloud Build service account access to read the secret
+        project_number = client.get_project_number()
+        compute_sa = f"{project_number}-compute@developer.gserviceaccount.com"
+        client.grant_secret_access(HF_TOKEN_SECRET_NAME, compute_sa)
+        
+        print(f"✔ Token saved to Secret Manager and access granted to Cloud Build: {HF_TOKEN_SECRET_NAME}")
     except Exception as e:
-        print(f"⚠ Failed to save token to Secret Manager: {e}")
+        print(f"⚠ Failed to save or configure token in Secret Manager: {e}")
         print("Continuing without saving.")

@@ -398,7 +398,7 @@ def gcs_list_buckets(project):
 @click.option("--dflash-model", help="DFlash drafter model for ZML speculative decoding")
 def model_deploy(project, region, bucket, model_id, framework, gpu, cpu, memory, name, min_instances, max_instances, subnet, dflash_model):
     """Deploy a model to Cloud Run with GPU support."""
-    from cr_infer.deployer import CloudRunDeployer
+    from cr_infer.deployer import CloudRunDeployer, sanitize_service_name
     from cr_infer.models import list_models_in_bucket
     from cr_infer.config import list_supported_regions, list_supported_gpus
     
@@ -482,8 +482,9 @@ def model_deploy(project, region, bucket, model_id, framework, gpu, cpu, memory,
     framework = prompt_if_missing(framework, "Framework", choices=["ollama", "vllm", "zml"])
     
     if not name:
-        default_name = f"{framework}-{model_id.replace(':', '-').replace('/', '-')}"[:63].lower()
+        default_name = sanitize_service_name(f"{framework}-{model_id}")
         name = click.prompt("Enter service name", default=default_name)
+    name = sanitize_service_name(name)
 
     # VPC setup
     network = None

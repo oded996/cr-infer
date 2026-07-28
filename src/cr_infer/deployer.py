@@ -1,7 +1,27 @@
 import json
+import re
 from typing import Dict, Any, Optional, List, Tuple
 from cr_infer.client import GCPClient
 from cr_infer.config import get_gpu_config
+
+def sanitize_service_name(name: str) -> str:
+    """Sanitize service name to meet Cloud Run API service_id requirements:
+    - Only lowercase letters, digits, and hyphens.
+    - Must begin with a letter.
+    - Cannot end with a hyphen.
+    - Must be less than 50 characters.
+    """
+    if not name:
+        name = "cr-service"
+    s = name.lower()
+    s = re.sub(r'[^a-z0-9-]+', '-', s)
+    s = re.sub(r'-+', '-', s)
+    s = s.lstrip('-')
+    if s and not s[0].isalpha():
+        s = f"svc-{s}"
+    s = s[:49]
+    s = s.rstrip('-')
+    return s or "cr-service"
 
 class CloudRunDeployer:
     def __init__(self, client: GCPClient):
@@ -176,6 +196,7 @@ class CloudRunDeployer:
         payload: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Execute the deployment using a prepared payload."""
+        name = sanitize_service_name(name)
         existing = self.get_service(region, name)
         if existing:
             url = f"https://run.googleapis.com/v2/projects/{self.client.project_id}/locations/{region}/services/{name}"

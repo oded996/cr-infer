@@ -3,6 +3,7 @@ import sys
 import click
 from typing import Optional, List, Tuple, Dict, Any, Union
 from cr_infer.client import GCPClient
+from cr_infer.deployer import CloudRunDeployer
 
 def prompt_if_missing(value: Optional[str], name: str, choices: Optional[List[Union[str, Dict[str, Any]]]] = None, message: str = None) -> str:
     if value:

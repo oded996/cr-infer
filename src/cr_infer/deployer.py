@@ -182,9 +182,9 @@ class CloudRunDeployer:
             if network:
                 interface["network"] = network
 
-            payload["template"]["annotations"] = {
-                "run.googleapis.com/network-interfaces": json.dumps([interface]),
-                "run.googleapis.com/vpc-access-egress": "all-traffic"
+            payload["template"]["vpcAccess"] = {
+                "egress": "ALL_TRAFFIC",
+                "networkInterfaces": [interface]
             }
         
         return payload

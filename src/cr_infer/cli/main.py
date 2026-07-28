@@ -84,18 +84,24 @@ def print_service_table(service_payload: Dict[str, Any], region: str, title: str
     print_row("Zonal Redundancy:", zonal_red)
     
     # Networking
-    ann = template.get("annotations", {})
-    nw_interfaces = ann.get("run.googleapis.com/network-interfaces")
+    vpc_access = template.get("vpcAccess", {})
+    nw_interfaces = vpc_access.get("networkInterfaces", [])
     if nw_interfaces:
-        try:
-            if isinstance(nw_interfaces, str):
-                nw_interfaces = json.loads(nw_interfaces)
-            subnet = nw_interfaces[0].get("subnetwork", "Unknown")
-            print_row("VPC Subnetwork:", subnet)
-        except:
-            print_row("VPC Subnetwork:", "Unknown")
+        subnet = nw_interfaces[0].get("subnetwork", "Unknown")
+        print_row("VPC Subnetwork:", subnet)
     else:
-        print_row("VPC Subnetwork:", "None")
+        ann = template.get("annotations", {})
+        nw_interfaces_ann = ann.get("run.googleapis.com/network-interfaces")
+        if nw_interfaces_ann:
+            try:
+                if isinstance(nw_interfaces_ann, str):
+                    nw_interfaces_ann = json.loads(nw_interfaces_ann)
+                subnet = nw_interfaces_ann[0].get("subnetwork", "Unknown")
+                print_row("VPC Subnetwork:", subnet)
+            except:
+                print_row("VPC Subnetwork:", "Unknown")
+        else:
+            print_row("VPC Subnetwork:", "None")
 
     # Storage
     vols = template.get("volumes", [])
